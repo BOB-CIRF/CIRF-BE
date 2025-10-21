@@ -6,7 +6,7 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public enum ResponseMessage {
-    SCAN_STATUS_RETRIEVED("스캔 상태를 성공적으로 조회했습니다");
+    GET_SCAN_RESULTS_SUCCESS("해당 account의 리전의 스캔 결과를 성공적으로 조회했습니다.");
 
     private final String message;
 }
