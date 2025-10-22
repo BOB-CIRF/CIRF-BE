@@ -2,11 +2,13 @@ package com.cirf.dashboard.domain.scan.repository;
 
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
+import com.cirf.dashboard.domain.scan.entity.ScanRegionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
@@ -88,5 +90,36 @@ public class ScanEc2Repository {
 
         // 배치로 저장
         instances.forEach(table::putItem);
+    }
+
+    public Optional<ScanEc2Metadata> getEc2MetadataByEc2ScanId(Long ec2ScanId) {
+        DynamoDbTable<ScanEc2Metadata> table = dynamoDbEnhancedClient.table(
+                tableName,
+                TableSchema.fromBean(ScanEc2Metadata.class)
+        );
+
+        Key key = Key.builder()
+                .partitionValue("EC2#"+ec2ScanId)
+                .sortValue("METADATA")
+                .build();
+
+        return Optional.ofNullable(table.getItem(key));
+    }
+
+    public List<EnabledInstances> getEc2InstancesByRegion(Long ec2ScanId, String region) {
+        DynamoDbTable<EnabledInstances> table = dynamoDbEnhancedClient.table(
+                tableName,
+                TableSchema.fromBean(EnabledInstances.class)
+        );
+
+        Key key = Key.builder()
+                .partitionValue("EC2#" + ec2ScanId)
+                .sortValue("REG#" + region + "#")
+                .build();
+
+        return table.query(r -> r.queryConditional(
+                software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional
+                        .sortBeginsWith(key)
+        )).items().stream().toList();
     }
 }

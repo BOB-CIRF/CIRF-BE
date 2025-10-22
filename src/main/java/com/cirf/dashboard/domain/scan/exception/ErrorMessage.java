@@ -14,6 +14,10 @@ public enum ErrorMessage {
     FAILED_CREATE_EC2_METADATA("EC2 스캔 정보를 저장하는 데 실패했습니다."),
     FAILED_CREATE_EC2_REGION("EC2 리전을 저장하는 데 실패했습니다."),
     AWS_EC2_API_ERROR("특정 리전의 AWS EC2 API 에서 오류가 발생했습니다."),
+
+    EC2_METADATA_NOT_FOUND("해당 아이디에 대한 EC2 스캔 정보가 없습니다."),
+    CUSTOM_ACCESS_DENIED("잘못된 접근 입니다."),
+    INVALID_REGION("리전 정보가 잘못됐습니다."),
     INTERNAL_ERROR("내부 서버 오류가 발생했습니다.");
 
     private final String message;
