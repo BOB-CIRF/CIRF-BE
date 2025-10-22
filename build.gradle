@@ -33,6 +33,7 @@ dependencies {
 	implementation platform('software.amazon.awssdk:bom:2.20.56')
 	implementation("software.amazon.awssdk:dynamodb")
 	implementation("software.amazon.awssdk:dynamodb-enhanced")
+	implementation("software.amazon.awssdk:ec2")
 	runtimeOnly 'com.mysql:mysql-connector-j'
 
 	// Swagger
