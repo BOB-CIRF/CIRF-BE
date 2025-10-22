@@ -11,15 +11,15 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @DynamoDbBean
-public class Scan {
+public class ScanLogsMetadata {
 
     public static final String METADATA = "METADATA";
 
     private String pk;              // Partition Key: SCAN#{scanId}
     private String sk;              // Sort Key: METADATA
-    private Integer scanId;
-    private Integer tenantId;
-    private Integer caseId;
+    private Long scanId;
+    private Long tenantId;
+    private Long caseId;
     private String accountId;
     private String status;
     private String startedAt;
@@ -41,17 +41,17 @@ public class Scan {
     }
 
     @DynamoDbAttribute("scan_id")
-    public Integer getScanId() {
+    public Long getScanId() {
         return scanId;
     }
 
     @DynamoDbAttribute("tenant_id")
-    public Integer getTenantId() {
+    public Long getTenantId() {
         return tenantId;
     }
 
     @DynamoDbAttribute("case_id")
-    public Integer getCaseId() {
+    public Long getCaseId() {
         return caseId;
     }
 

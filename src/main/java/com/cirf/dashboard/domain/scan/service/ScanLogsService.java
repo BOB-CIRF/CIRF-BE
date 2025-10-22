@@ -2,7 +2,7 @@ package com.cirf.dashboard.domain.scan.service;
 
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
 import com.cirf.dashboard.domain.scan.dto.response.ScanResultsResponse;
-import com.cirf.dashboard.domain.scan.entity.Scan;
+import com.cirf.dashboard.domain.scan.entity.ScanLogsMetadata;
 import com.cirf.dashboard.domain.scan.exception.ErrorMessage;
 import com.cirf.dashboard.domain.scan.exception.RegionNotFoundException;
 import com.cirf.dashboard.domain.scan.exception.ScanNotCompletedException;
@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,7 +32,7 @@ public class ScanLogsService {
                 tenantId, caseId, request.accountId(), request.region());
 
         // tenantId, caseId, accountId로 가장 최근의 Scan 메타데이터를 가져오기
-        Scan latestScan = scanLogsRepository.findLatestScan(tenantId, caseId, request.accountId())
+        ScanLogsMetadata latestScan = scanLogsRepository.findLatestScan(tenantId, caseId, request.accountId())
                 .orElseThrow(() -> new ScanNotFoundException(ErrorMessage.SCAN_NOT_FOUND));
 
         log.info("Found latestScan - scanId: {}, status: {}", latestScan.getScanId(), latestScan.getStatus());
@@ -59,14 +58,14 @@ public class ScanLogsService {
         return checkEnabledLogsForRegion(latestScan.getScanId(), request.accountId(), request.region(), pageable);
     }
 
-    private Slice<ScanResultsResponse> checkEnabledLogsForRegion(Integer scanId, String accountId, String region, Pageable pageable) {
+    private Slice<ScanResultsResponse> checkEnabledLogsForRegion(Long scanId, String accountId, String region, Pageable pageable) {
         // 모든 로그 타입에 대한 결과 생성
         List<ScanResultsResponse> allResults = Arrays.stream(LogType.values())
                 .map(logType -> new ScanResultsResponse(
                         logType.getType(),
                         scanLogsRepository.existsEnabledLog(scanId, accountId, region, logType.getType())
                 ))
-                .collect(Collectors.toList());
+                .toList();
 
         // 페이징 처리
         int start = (int) pageable.getOffset();

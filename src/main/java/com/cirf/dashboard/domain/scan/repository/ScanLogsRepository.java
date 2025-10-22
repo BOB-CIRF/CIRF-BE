@@ -1,7 +1,7 @@
 package com.cirf.dashboard.domain.scan.repository;
 
 import com.cirf.dashboard.domain.scan.entity.EnabledLogs;
-import com.cirf.dashboard.domain.scan.entity.Scan;
+import com.cirf.dashboard.domain.scan.entity.ScanLogsMetadata;
 import com.cirf.dashboard.domain.scan.entity.ScanRegionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,9 +25,9 @@ public class ScanLogsRepository {
     @Value("${aws.dynamodb.table-name}")
     private String tableName;
 
-    public Optional<Scan> findLatestScan(long tenantId, long caseId, String accountId) {
-        DynamoDbTable<Scan> table = dynamoDbEnhancedClient.table(tableName, TableSchema.fromBean(Scan.class));
-        DynamoDbIndex<Scan> gsi2 = table.index("GSI2PK-GSI2SK-index");
+    public Optional<ScanLogsMetadata> findLatestScan(long tenantId, long caseId, String accountId) {
+        DynamoDbTable<ScanLogsMetadata> table = dynamoDbEnhancedClient.table(tableName, TableSchema.fromBean(ScanLogsMetadata.class));
+        DynamoDbIndex<ScanLogsMetadata> gsi2 = table.index("GSI2PK-GSI2SK-index");
 
         String gsi2Pk = String.format("TENANT#%d#CASE#%d#ACCOUNT#%s", tenantId, caseId, accountId);
 
@@ -60,7 +60,7 @@ public class ScanLogsRepository {
         return Optional.ofNullable(table.getItem(key));
     }
 
-    public boolean existsEnabledLog(Integer scanId, String accountId, String region, String logType) {
+    public boolean existsEnabledLog(Long scanId, String accountId, String region, String logType) {
         DynamoDbTable<EnabledLogs> table = dynamoDbEnhancedClient.table(
                 tableName,
                 TableSchema.fromBean(EnabledLogs.class)
