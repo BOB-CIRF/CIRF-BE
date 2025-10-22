@@ -1,11 +1,13 @@
 package com.cirf.dashboard.domain.scan.service.enums;
 
+import lombok.Getter;
 import software.amazon.awssdk.regions.Region;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Getter
 public enum AwsRegion {
     US_EAST_1(Region.US_EAST_1, "US East (N. Virginia)"),
     US_EAST_2(Region.US_EAST_2, "US East (Ohio)"),
@@ -37,18 +39,6 @@ public enum AwsRegion {
         this.description = description;
     }
 
-    public Region getRegion() {
-        return region;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public String getRegionId() {
-        return region.id();
-    }
-
     public static List<Region> getAllRegions() {
         return Arrays.stream(values())
                 .map(AwsRegion::getRegion)
@@ -60,5 +50,10 @@ public enum AwsRegion {
                 .filter(awsRegion -> awsRegion.getRegion().equals(region))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown region: " + region.id()));
+    }
+
+    public static boolean isValidRegion(String regionName) {
+        return Arrays.stream(values())
+                .anyMatch(awsRegion -> awsRegion.getRegion().id().equals(regionName));
     }
 }

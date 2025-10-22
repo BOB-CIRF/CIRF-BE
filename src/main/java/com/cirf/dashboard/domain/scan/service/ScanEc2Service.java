@@ -1,15 +1,16 @@
 package com.cirf.dashboard.domain.scan.service;
 
+import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
+import com.cirf.dashboard.domain.scan.dto.response.ScanCompletedResponse;
+import com.cirf.dashboard.domain.scan.dto.response.ScanEc2Response;
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
+import com.cirf.dashboard.domain.scan.exception.*;
 import com.cirf.dashboard.domain.scan.service.enums.AwsRegion;
-import com.cirf.dashboard.domain.scan.exception.AwsEc2Exception;
-import com.cirf.dashboard.domain.scan.exception.ErrorMessage;
-import com.cirf.dashboard.domain.scan.exception.ScanEc2Exception;
-import com.cirf.dashboard.domain.scan.exception.ScanEc2MetadataCreationException;
 import com.cirf.dashboard.domain.scan.repository.ScanEc2Repository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -29,7 +30,7 @@ public class ScanEc2Service {
 
     private final ScanEc2Repository scanEc2Repository;
 
-    public Long scanEc2Request(long tenantId, long caseId, String accountId) {
+    public ScanCompletedResponse scanEc2Request(long tenantId, long caseId, String accountId) {
         // 1. ScanEc2Metadata 생성
         ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(tenantId, caseId, accountId)
                 .orElseThrow(() -> new ScanEc2MetadataCreationException(ErrorMessage.FAILED_CREATE_EC2_METADATA));
@@ -56,7 +57,7 @@ public class ScanEc2Service {
             List<EnabledInstances> allInstances = futures.stream()
                     .map(CompletableFuture::join)
                     .flatMap(List::stream)
-                    .collect(Collectors.toList());
+                    .toList();
 
             log.info("Found {} EC2 instances across all regions", allInstances.size());
 
@@ -66,7 +67,7 @@ public class ScanEc2Service {
                 log.info("Saved {} EC2 instances to DynamoDB", allInstances.size());
             }
 
-            return ec2ScanId;
+            return new ScanCompletedResponse(ec2ScanId);
 
         } catch (ScanEc2Exception e) {
             log.error("Error during EC2 scan", e);
@@ -161,5 +162,53 @@ public class ScanEc2Service {
                 .status(instance.state().nameAsString())
                 .publicIp(instance.publicIpAddress() != null ? instance.publicIpAddress() : "")
                 .build();
+    }
+
+    public Slice<ScanEc2Response> getEc2Lists(long tenantId, long ec2ScanId, ScanResultsRequest request){
+        // ScanEc2 정보 객체 검증
+        ScanEc2Metadata ec2Metadata = scanEc2Repository.getEc2MetadataByEc2ScanId(ec2ScanId)
+                .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));
+
+        // tenantId 검증 : ec2ScanId에 해당하는 metadata의 tenant_id와 일치하는가.
+        if (ec2Metadata.getTenantId() != tenantId) {
+            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
+        }
+
+        // accountId 검증
+        if (!ec2Metadata.getAccountId().equals(request.accountId())){
+            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
+        }
+
+        // region 검증
+        if (!AwsRegion.isValidRegion(request.region())) {
+            throw new InvalidRegionException(ErrorMessage.INVALID_REGION);
+        }
+
+        // region별 EC2 인스턴스 조회
+        List<EnabledInstances> instances = scanEc2Repository.getEc2InstancesByRegion(ec2ScanId, request.region());
+
+        log.info("Found {} instances for ec2ScanId: {}, region: {}", instances.size(), ec2ScanId, request.region());
+
+        // EnabledInstances를 ScanEc2Response로 변환
+        List<ScanEc2Response> ec2Responses = instances.stream()
+                .map(instance -> new ScanEc2Response(
+                        instance.getInstanceId(),
+                        instance.getInstanceName(),
+                        instance.getInstanceType(),
+                        instance.getRegion(),
+                        instance.getStatus(),
+                        instance.getPublicIp()
+                ))
+                .toList();
+
+        // 페이징 처리
+        Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), ec2Responses.size());
+
+        List<ScanEc2Response> pagedContent = ec2Responses.subList(start, end);
+        boolean hasNext = end < ec2Responses.size();
+
+        return new SliceImpl<>(pagedContent, pageable, hasNext);
     }
 }

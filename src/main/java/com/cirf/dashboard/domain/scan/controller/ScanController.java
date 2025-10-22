@@ -2,6 +2,9 @@ package com.cirf.dashboard.domain.scan.controller;
 
 import com.cirf.dashboard.domain.scan.dto.request.ScanEc2Request;
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
+import com.cirf.dashboard.domain.scan.dto.response.ScanCompletedResponse;
+import com.cirf.dashboard.domain.scan.dto.response.ScanEc2Response;
+import com.cirf.dashboard.domain.scan.dto.response.lists.ScanEc2ListResponse;
 import com.cirf.dashboard.domain.scan.dto.response.ScanResultsResponse;
 import com.cirf.dashboard.domain.scan.dto.response.lists.ScanResultsListResponse;
 import com.cirf.dashboard.domain.scan.service.ScanEc2Service;
@@ -45,17 +48,31 @@ public class ScanController {
     }
 
     @PostMapping("/ec2")
-    public ApiResponse<Long> ec2ScanResults(
-            @RequestHeader("tenant_id") Long id,
+    public ApiResponse<ScanCompletedResponse> ec2ScanRequest(
+            @RequestHeader("tenant_id") Long tenantId,
             @RequestBody @Valid ScanEc2Request scanEc2Request
             ){
 
-        Long scanEc2Id = scanEc2Service.scanEc2Request(id, scanEc2Request.caseId(), scanEc2Request.accountId());
+        ScanCompletedResponse response = scanEc2Service.scanEc2Request(tenantId, scanEc2Request.caseId(), scanEc2Request.accountId());
 
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
                 ResponseMessage.EC2_SCAN_SUCCESS.getMessage(),
-                scanEc2Id
+                response
+        );
+    }
+
+    @GetMapping("/ec2/{scanEc2Id}")
+    public ApiResponse<ScanEc2ListResponse> getEc2ScanResults(
+            @RequestHeader("tenant_id") Long tenantId,
+            @PathVariable Long scanEc2Id,
+            @Valid ScanResultsRequest request
+    ){
+        Slice<ScanEc2Response> results = scanEc2Service.getEc2Lists(tenantId, scanEc2Id, request);
+        return new ApiResponse<>(
+                HttpStatus.OK.value(),
+                ResponseMessage.GET_EC2_RESULTS_SUCCESS.getMessage(),
+                ScanEc2ListResponse.of(results)
         );
     }
 }
