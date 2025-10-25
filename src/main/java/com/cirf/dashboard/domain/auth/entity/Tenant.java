@@ -1,6 +1,5 @@
-package com.cirf.dashboard.global.entity;
+package com.cirf.dashboard.domain.auth.entity;
 
-import com.cirf.dashboard.domain.cases.entity.AccountId;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

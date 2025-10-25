@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.scan.service;
 
+import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
 import com.cirf.dashboard.domain.scan.dto.response.ScanCompletedResponse;
 import com.cirf.dashboard.domain.scan.dto.response.ScanEc2Response;
@@ -8,6 +9,7 @@ import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
 import com.cirf.dashboard.domain.scan.exception.*;
 import com.cirf.dashboard.domain.scan.service.enums.AwsRegion;
 import com.cirf.dashboard.domain.scan.repository.ScanEc2Repository;
+import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -29,8 +31,14 @@ import java.util.stream.Collectors;
 public class ScanEc2Service {
 
     private final ScanEc2Repository scanEc2Repository;
+    private final UserRepository userRepository;
 
     public ScanCompletedResponse scanEc2Request(long userId, long caseId, String accountId) {
+        // userId 검증
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException();
+        }
+
         // 1. ScanEc2Metadata 생성
         ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(userId, caseId, accountId)
                 .orElseThrow(() -> new ScanEc2MetadataCreationException(ErrorMessage.FAILED_CREATE_EC2_METADATA));
@@ -171,6 +179,11 @@ public class ScanEc2Service {
     }
 
     public Slice<ScanEc2Response> getEc2Lists(long userId, long ec2ScanId, ScanResultsRequest request){
+        // userId 검증
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException();
+        }
+
         // ScanEc2 정보 객체 검증
         ScanEc2Metadata ec2Metadata = scanEc2Repository.getEc2MetadataByEc2ScanId(ec2ScanId)
                 .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));

@@ -23,8 +23,6 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ScanController {
 
-    private static final int DEFAULT_PAGE_SIZE = 9;
-
     private final ScanLogsService scanLogsService;
     private final ScanEc2Service scanEc2Service;
 
@@ -34,7 +32,7 @@ public class ScanController {
             @PathVariable long caseId,
             @Valid ScanResultsRequest request
     ) {
-        log.info("Received scan results request - tenantId: {}, caseId: {}, request: {}", userId, caseId, request);
+        log.info("Received scan results request - userId: {}, caseId: {}, request: {}", userId, caseId, request);
 
         Slice<ScanResultsResponse> scanResults = scanLogsService.getScanResultsByRegion(userId, caseId, request);
 

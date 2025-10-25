@@ -1,6 +1,6 @@
-package com.cirf.dashboard.global.repository;
+package com.cirf.dashboard.domain.auth.repository;
 
-import com.cirf.dashboard.global.entity.User;
+import com.cirf.dashboard.domain.auth.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
