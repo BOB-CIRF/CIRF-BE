@@ -25,11 +25,11 @@ public class ScanLogsRepository {
     @Value("${aws.dynamodb.table-name}")
     private String tableName;
 
-    public Optional<ScanLogsMetadata> findLatestScan(long tenantId, long caseId, String accountId) {
+    public Optional<ScanLogsMetadata> findLatestScan(long userId, long caseId, String accountId) {
         DynamoDbTable<ScanLogsMetadata> table = dynamoDbEnhancedClient.table(tableName, TableSchema.fromBean(ScanLogsMetadata.class));
         DynamoDbIndex<ScanLogsMetadata> gsi2 = table.index("GSI2PK-GSI2SK-index");
 
-        String gsi2Pk = String.format("TENANT#%d#CASE#%d#ACCOUNT#%s", tenantId, caseId, accountId);
+        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s", userId, caseId, accountId);
 
         QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
                 .queryConditional(QueryConditional.keyEqualTo(Key.builder()

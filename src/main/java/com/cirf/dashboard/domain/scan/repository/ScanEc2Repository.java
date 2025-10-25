@@ -2,7 +2,6 @@ package com.cirf.dashboard.domain.scan.repository;
 
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
-import com.cirf.dashboard.domain.scan.entity.ScanRegionStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
@@ -31,7 +30,7 @@ public class ScanEc2Repository {
     @Value("${aws.dynamodb.table-name}")
     private String tableName;
 
-    public Optional<ScanEc2Metadata> createScanEc2Metadata(long tenantId, long caseId, String accountId){
+    public Optional<ScanEc2Metadata> createScanEc2Metadata(long userId, long caseId, String accountId){
         // 1. Counter를 사용하여 새로운 ec2ScanId 생성
         Long newEc2ScanId = getNextEc2ScanId();
 
@@ -44,7 +43,7 @@ public class ScanEc2Repository {
                 .pk(pk)
                 .sk(sk)
                 .ec2ScanId(newEc2ScanId)
-                .tenantId(tenantId)
+                .userId(userId)
                 .caseId(caseId)
                 .accountId(accountId)
                 .createdAt(createdAt)
@@ -66,6 +65,27 @@ public class ScanEc2Repository {
         Map<String, AttributeValue> key = new HashMap<>();
         key.put("PK", AttributeValue.builder().s("COUNTER").build());
         key.put("SK", AttributeValue.builder().s("EC2_SCAN_ID").build());
+
+        // UpdateItem을 사용하여 atomic하게 카운터 증가
+        UpdateItemRequest updateRequest = UpdateItemRequest.builder()
+                .tableName(tableName)
+                .key(key)
+                .updateExpression("ADD #counter :increment")
+                .expressionAttributeNames(Map.of("#counter", "counter_value"))
+                .expressionAttributeValues(Map.of(":increment", AttributeValue.builder().n("1").build()))
+                .returnValues("UPDATED_NEW")
+                .build();
+
+        UpdateItemResponse response = dynamoDbClient.updateItem(updateRequest);
+
+        return Long.parseLong(response.attributes().get("counter_value").n());
+    }
+
+    public Long getNextEc2IdxId() {
+        // Counter 아이템의 키
+        Map<String, AttributeValue> key = new HashMap<>();
+        key.put("PK", AttributeValue.builder().s("COUNTER").build());
+        key.put("SK", AttributeValue.builder().s("EC2#IDX").build());
 
         // UpdateItem을 사용하여 atomic하게 카운터 증가
         UpdateItemRequest updateRequest = UpdateItemRequest.builder()

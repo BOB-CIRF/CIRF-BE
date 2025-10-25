@@ -30,9 +30,9 @@ public class ScanEc2Service {
 
     private final ScanEc2Repository scanEc2Repository;
 
-    public ScanCompletedResponse scanEc2Request(long tenantId, long caseId, String accountId) {
+    public ScanCompletedResponse scanEc2Request(long userId, long caseId, String accountId) {
         // 1. ScanEc2Metadata 생성
-        ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(tenantId, caseId, accountId)
+        ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(userId, caseId, accountId)
                 .orElseThrow(() -> new ScanEc2MetadataCreationException(ErrorMessage.FAILED_CREATE_EC2_METADATA));
 
         Long ec2ScanId = metadata.getScanId();
@@ -148,29 +148,35 @@ public class ScanEc2Service {
                 .findFirst()
                 .orElse("");
 
+        // idxId 생성
+        Long idxId = scanEc2Repository.getNextEc2IdxId();
+
         String pk = "EC2#" + ec2ScanId;
         String sk = String.format("REG#%s#INSTANCE#%s", region, instanceId);
+        String gsi4Pk = "EC2#IDX#" + idxId;
 
         return EnabledInstances.builder()
                 .pk(pk)
                 .sk(sk)
                 .ec2ScanId(ec2ScanId)
+                .idxId(idxId)
                 .instanceId(instanceId)
                 .instanceName(instanceName)
                 .instanceType(instance.instanceType().toString())
                 .region(region)
                 .status(instance.state().nameAsString())
                 .publicIp(instance.publicIpAddress() != null ? instance.publicIpAddress() : "")
+                .gsi4Pk(gsi4Pk)
                 .build();
     }
 
-    public Slice<ScanEc2Response> getEc2Lists(long tenantId, long ec2ScanId, ScanResultsRequest request){
+    public Slice<ScanEc2Response> getEc2Lists(long userId, long ec2ScanId, ScanResultsRequest request){
         // ScanEc2 정보 객체 검증
         ScanEc2Metadata ec2Metadata = scanEc2Repository.getEc2MetadataByEc2ScanId(ec2ScanId)
                 .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));
 
-        // tenantId 검증 : ec2ScanId에 해당하는 metadata의 tenant_id와 일치하는가.
-        if (ec2Metadata.getTenantId() != tenantId) {
+        // userId 검증 : ec2ScanId에 해당하는 metadata의 userId와 일치하는가.
+        if (ec2Metadata.getUserId() != userId) {
             throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
         }
 
@@ -192,6 +198,7 @@ public class ScanEc2Service {
         // EnabledInstances를 ScanEc2Response로 변환
         List<ScanEc2Response> ec2Responses = instances.stream()
                 .map(instance -> new ScanEc2Response(
+                        instance.getIdxId(),
                         instance.getInstanceId(),
                         instance.getInstanceName(),
                         instance.getInstanceType(),
