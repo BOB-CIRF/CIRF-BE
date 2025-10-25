@@ -1,6 +1,7 @@
-package com.cirf.dashboard.global.entity;
+package com.cirf.dashboard.domain.auth.entity;
 
 import com.cirf.dashboard.domain.cases.entity.IncidentCase;
+import com.cirf.dashboard.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -11,7 +12,7 @@ import java.util.List;
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
-public class User extends BaseTimeEntity{
+public class User extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

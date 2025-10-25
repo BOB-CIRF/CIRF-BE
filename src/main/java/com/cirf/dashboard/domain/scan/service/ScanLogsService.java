@@ -1,5 +1,8 @@
 package com.cirf.dashboard.domain.scan.service;
 
+import com.cirf.dashboard.domain.auth.entity.User;
+import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
+import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
 import com.cirf.dashboard.domain.scan.dto.response.ScanResultsResponse;
 import com.cirf.dashboard.domain.scan.entity.ScanLogsMetadata;
@@ -26,13 +29,19 @@ import java.util.List;
 public class ScanLogsService {
 
     private final ScanLogsRepository scanLogsRepository;
+    private final UserRepository userRepository;
 
-    public Slice<ScanResultsResponse> getScanResultsByRegion(long tenantId, long caseId, ScanResultsRequest request) {
-        log.info("getScanResultsByRegion - tenantId: {}, caseId: {}, accountId: {}, region: {}",
-                tenantId, caseId, request.accountId(), request.region());
+    public Slice<ScanResultsResponse> getScanResultsByRegion(long userId, long caseId, ScanResultsRequest request) {
+        log.info("getScanResultsByRegion - userId: {}, caseId: {}, accountId: {}, region: {}",
+                userId, caseId, request.accountId(), request.region());
 
-        // tenantId, caseId, accountId로 가장 최근의 Scan 메타데이터를 가져오기
-        ScanLogsMetadata latestScan = scanLogsRepository.findLatestScan(tenantId, caseId, request.accountId())
+        // userId 검증
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException();
+        }
+
+        // userId, caseId, accountId로 가장 최근의 Scan 메타데이터를 가져오기
+        ScanLogsMetadata latestScan = scanLogsRepository.findLatestScan(userId, caseId, request.accountId())
                 .orElseThrow(() -> new ScanNotFoundException(ErrorMessage.SCAN_NOT_FOUND));
 
         log.info("Found latestScan - scanId: {}, status: {}", latestScan.getScanId(), latestScan.getStatus());

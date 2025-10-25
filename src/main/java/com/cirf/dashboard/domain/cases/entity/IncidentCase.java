@@ -1,7 +1,7 @@
 package com.cirf.dashboard.domain.cases.entity;
 
 import com.cirf.dashboard.global.entity.BaseTimeEntity;
-import com.cirf.dashboard.global.entity.User;
+import com.cirf.dashboard.domain.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

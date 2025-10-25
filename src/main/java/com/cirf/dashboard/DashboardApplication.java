@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 @EnableJpaAuditing
 @SpringBootApplication
 @EntityScan(basePackages = {
-	"com.cirf.dashboard.global.entity",
+	"com.cirf.dashboard.domain.auth.entity",
 	"com.cirf.dashboard.domain.cases.entity"
 })
 public class DashboardApplication {

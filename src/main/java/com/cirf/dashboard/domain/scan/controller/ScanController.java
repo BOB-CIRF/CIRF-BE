@@ -23,20 +23,18 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ScanController {
 
-    private static final int DEFAULT_PAGE_SIZE = 9;
-
     private final ScanLogsService scanLogsService;
     private final ScanEc2Service scanEc2Service;
 
     @GetMapping("/logs/{caseId}")
     public ApiResponse<ScanResultsListResponse> getScanResults(
-            @RequestHeader("tenant_id") long tenantId,
+            @RequestHeader("userId") long userId,
             @PathVariable long caseId,
             @Valid ScanResultsRequest request
     ) {
-        log.info("Received scan results request - tenantId: {}, caseId: {}, request: {}", tenantId, caseId, request);
+        log.info("Received scan results request - userId: {}, caseId: {}, request: {}", userId, caseId, request);
 
-        Slice<ScanResultsResponse> scanResults = scanLogsService.getScanResultsByRegion(tenantId, caseId, request);
+        Slice<ScanResultsResponse> scanResults = scanLogsService.getScanResultsByRegion(userId, caseId, request);
 
         log.info("Scan results retrieved successfully - count: {}", scanResults.getNumberOfElements());
 
@@ -49,11 +47,11 @@ public class ScanController {
 
     @PostMapping("/ec2")
     public ApiResponse<ScanCompletedResponse> ec2ScanRequest(
-            @RequestHeader("tenant_id") Long tenantId,
+            @RequestHeader("userId") Long userId,
             @RequestBody @Valid ScanEc2Request scanEc2Request
             ){
 
-        ScanCompletedResponse response = scanEc2Service.scanEc2Request(tenantId, scanEc2Request.caseId(), scanEc2Request.accountId());
+        ScanCompletedResponse response = scanEc2Service.scanEc2Request(userId, scanEc2Request.caseId(), scanEc2Request.accountId());
 
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
@@ -64,11 +62,11 @@ public class ScanController {
 
     @GetMapping("/ec2/{scanEc2Id}")
     public ApiResponse<ScanEc2ListResponse> getEc2ScanResults(
-            @RequestHeader("tenant_id") Long tenantId,
+            @RequestHeader("userId") Long userId,
             @PathVariable Long scanEc2Id,
             @Valid ScanResultsRequest request
     ){
-        Slice<ScanEc2Response> results = scanEc2Service.getEc2Lists(tenantId, scanEc2Id, request);
+        Slice<ScanEc2Response> results = scanEc2Service.getEc2Lists(userId, scanEc2Id, request);
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
                 ResponseMessage.GET_EC2_RESULTS_SUCCESS.getMessage(),

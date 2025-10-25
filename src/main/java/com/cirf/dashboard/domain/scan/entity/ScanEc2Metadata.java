@@ -17,7 +17,7 @@ public class ScanEc2Metadata {
     private String pk;              // Partition Key: EC2#{ec2ScanId}
     private String sk;              // Sort Key: METADATA
     private Long ec2ScanId;
-    private Long tenantId;
+    private Long userId;
     private Long caseId;
     private String accountId;
     private String createdAt;
@@ -39,9 +39,9 @@ public class ScanEc2Metadata {
         return ec2ScanId;
     }
 
-    @DynamoDbAttribute("tenant_id")
-    public Long getTenantId() {
-        return tenantId;
+    @DynamoDbAttribute("user_id")
+    public Long getUserId() {
+        return userId;
     }
 
     @DynamoDbAttribute("case_id")
@@ -65,7 +65,7 @@ public class ScanEc2Metadata {
 
     public void updateEc2ScanId(Long ec2ScanId) { this.ec2ScanId = ec2ScanId; }
 
-    public void updateTenantId(Long tenantId) { this.tenantId = tenantId; }
+    public void updateUserId(Long userId) { this.userId = userId; }
 
     public void updateCaseId(Long caseId) { this.caseId = caseId; }
 

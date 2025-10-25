@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
 
 @Data
@@ -19,6 +20,7 @@ public class EnabledInstances {
     private String pk;              // Partition Key: EC2#{ec2ScanId}
     private String sk;              // Sort Key: REG#{region}#INSTANCE#{instanceId}
     private Long ec2ScanId;
+    private Long idxId;
     private String instanceId;
     private String instanceName;
     private String instanceType;
@@ -26,10 +28,18 @@ public class EnabledInstances {
     private String status;
     private String publicIp;
 
+    private String gsi4Pk; // EC2#IDX#{idxId}
+
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")
     public String getPk() {
         return pk;
+    }
+
+    @DynamoDbSecondaryPartitionKey(indexNames = "GSI4")
+    @DynamoDbAttribute("GSI4PK")
+    public String getGsi4Pk() {
+        return gsi4Pk;
     }
 
     @DynamoDbSortKey
@@ -39,9 +49,12 @@ public class EnabledInstances {
     }
 
     @DynamoDbAttribute("ec2_scan_id")
-    public Long getScanId() {
+    public Long getEc2ScanId() {
         return ec2ScanId;
     }
+
+    @DynamoDbAttribute("idx_id")
+    public Long getIdxId() { return idxId; }
 
     @DynamoDbAttribute("instance_id")
     public String getInstanceId() { return instanceId; }
@@ -67,6 +80,8 @@ public class EnabledInstances {
 
     public void updateEc2ScanId(Long ec2ScanId) { this.ec2ScanId = ec2ScanId; }
 
+    public void updateIdxId(Long idxId) { this.idxId = idxId; }
+
     public void updateInstanceId(String instanceId) { this.instanceId = instanceId; }
 
     public void updateInstanceName(String instanceName) { this.instanceName = instanceName; }
@@ -78,5 +93,7 @@ public class EnabledInstances {
     public void updateStatus(String status) { this.status = status; }
 
     public void updatePublicIp(String publicIp) { this.publicIp = publicIp; }
+
+    public void updateGsi4Pk(String gsi4Pk) { this.gsi4Pk = gsi4Pk; }
 
 }
