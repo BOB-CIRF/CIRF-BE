@@ -13,6 +13,8 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.Tag;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -141,5 +143,37 @@ public class ScanEc2Repository {
                 software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional
                         .sortBeginsWith(key)
         )).items().stream().toList();
+    }
+
+    public EnabledInstances createEnabledInstance(Long ec2ScanId, String region, Instance instance) {
+        String instanceId = instance.instanceId();
+        String instanceName = instance.tags().stream()
+                .filter(tag -> "Name".equals(tag.key()))
+                .map(Tag::value)
+                .findFirst()
+                .orElse("");
+
+        // idxId 생성
+        Long idxId = getNextEc2IdxId();
+
+        String pk = "EC2#" + ec2ScanId;
+        String sk = String.format("REG#%s#INSTANCE#%s", region, instanceId);
+        String gsi4Pk = "EC2#IDX#" + idxId;
+
+        return EnabledInstances.builder()
+                .pk(pk)
+                .sk(sk)
+                .ec2ScanId(ec2ScanId)
+                .idxId(idxId)
+                .instanceId(instanceId)
+                .instanceName(instanceName)
+                .instanceType(instance.instanceType().toString())
+                .instancePlatform(instance.platform().toString())
+                .instancePlatformDetails(instance.platformDetails())
+                .region(region)
+                .status(instance.state().nameAsString())
+                .publicIp(instance.publicIpAddress() != null ? instance.publicIpAddress() : "")
+                .gsi4Pk(gsi4Pk)
+                .build();
     }
 }
