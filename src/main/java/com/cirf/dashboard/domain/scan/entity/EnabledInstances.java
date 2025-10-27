@@ -24,6 +24,8 @@ public class EnabledInstances {
     private String instanceId;
     private String instanceName;
     private String instanceType;
+    private String instancePlatform;
+    private String instancePlatformDetails;
     private String region;
     private String status;
     private String publicIp;
@@ -65,6 +67,12 @@ public class EnabledInstances {
     @DynamoDbAttribute("instance_type")
     public String getInstanceType() { return instanceType; }
 
+    @DynamoDbAttribute("platform")
+    public String getPlatform() { return instancePlatform; }
+
+    @DynamoDbAttribute("platform_details")
+    public String getPlatformDetails() { return instancePlatformDetails; }
+
     @DynamoDbAttribute("region")
     public String getRegion() { return region; }
 
@@ -73,27 +81,5 @@ public class EnabledInstances {
 
     @DynamoDbAttribute("public_ip")
     public String getPublicIp() { return publicIp; }
-
-    public void updatePk(String pk) { this.pk = pk; }
-
-    public void updateSk(String sk) { this.sk = sk; }
-
-    public void updateEc2ScanId(Long ec2ScanId) { this.ec2ScanId = ec2ScanId; }
-
-    public void updateIdxId(Long idxId) { this.idxId = idxId; }
-
-    public void updateInstanceId(String instanceId) { this.instanceId = instanceId; }
-
-    public void updateInstanceName(String instanceName) { this.instanceName = instanceName; }
-
-    public void updateInstanceType(String instanceType) { this.instanceType = instanceType; }
-
-    public void updateRegion(String region) { this.region = region; }
-
-    public void updateStatus(String status) { this.status = status; }
-
-    public void updatePublicIp(String publicIp) { this.publicIp = publicIp; }
-
-    public void updateGsi4Pk(String gsi4Pk) { this.gsi4Pk = gsi4Pk; }
 
 }
