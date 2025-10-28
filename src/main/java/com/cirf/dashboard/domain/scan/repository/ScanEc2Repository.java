@@ -6,9 +6,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbIndex;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
@@ -41,6 +44,10 @@ public class ScanEc2Repository {
         String sk = ScanEc2Metadata.METADATA;
         String createdAt = Instant.now().toString();
 
+        // GSI2 키 생성 (TYPE을 포함하여 Logs Scan과 구별)
+        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s#TYPE#EC2", userId, caseId, accountId);
+        String gsi2Sk = String.format("CREATED#%s#EC2#%d", createdAt, newEc2ScanId);
+
         ScanEc2Metadata metadata = ScanEc2Metadata.builder()
                 .pk(pk)
                 .sk(sk)
@@ -49,6 +56,8 @@ public class ScanEc2Repository {
                 .caseId(caseId)
                 .accountId(accountId)
                 .createdAt(createdAt)
+                .gsi2Pk(gsi2Pk)
+                .gsi2Sk(gsi2Sk)
                 .build();
 
         // 3. DynamoDB에 저장
@@ -114,18 +123,25 @@ public class ScanEc2Repository {
         instances.forEach(table::putItem);
     }
 
-    public Optional<ScanEc2Metadata> getEc2MetadataByEc2ScanId(Long ec2ScanId) {
-        DynamoDbTable<ScanEc2Metadata> table = dynamoDbEnhancedClient.table(
-                tableName,
-                TableSchema.fromBean(ScanEc2Metadata.class)
-        );
+    public Optional<ScanEc2Metadata> findLatestEc2Scan(long userId, long caseId, String accountId) {
+        DynamoDbTable<ScanEc2Metadata> table = dynamoDbEnhancedClient.table(tableName, TableSchema.fromBean(ScanEc2Metadata.class));
+        DynamoDbIndex<ScanEc2Metadata> gsi2 = table.index("GSI2PK-GSI2SK-index");
 
-        Key key = Key.builder()
-                .partitionValue("EC2#"+ec2ScanId)
-                .sortValue("METADATA")
+        // TYPE#EC2를 포함하여 EC2 스캔만 조회
+        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s#TYPE#EC2", userId, caseId, accountId);
+
+        QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
+                .queryConditional(QueryConditional.keyEqualTo(Key.builder()
+                        .partitionValue(gsi2Pk)
+                        .build()))
+                .scanIndexForward(false)  // 내림차순 정렬 (최신순)
+                .limit(1)
                 .build();
 
-        return Optional.ofNullable(table.getItem(key));
+        return gsi2.query(queryRequest)
+                .stream()
+                .flatMap(page -> page.items().stream())
+                .findFirst();
     }
 
     public List<EnabledInstances> getEc2InstancesByRegion(Long ec2ScanId, String region) {

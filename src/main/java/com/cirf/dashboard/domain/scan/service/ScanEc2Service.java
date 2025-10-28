@@ -47,25 +47,21 @@ public class ScanEc2Service {
         return new ScanCompletedResponse(ec2ScanId);
     }
 
-    public Slice<ScanEc2Response> getEc2Lists(long userId, long ec2ScanId, ScanResultsRequest request){
+    public Slice<ScanEc2Response> getEc2Lists(long userId, ScanResultsRequest request){
+        log.info("getEc2Lists - userId: {}, caseId: {}, accountId: {}, region: {}",
+                userId, request.caseId(), request.accountId(), request.region());
+
         // userId 검증
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException();
         }
 
-        // ScanEc2 정보 객체 검증
-        ScanEc2Metadata ec2Metadata = scanEc2Repository.getEc2MetadataByEc2ScanId(ec2ScanId)
+        // userId, caseId, accountId로 가장 최근의 EC2 Scan 메타데이터를 가져오기
+        ScanEc2Metadata ec2Metadata = scanEc2Repository.findLatestEc2Scan(userId, request.caseId(), request.accountId())
                 .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));
 
-        // userId 검증 : ec2ScanId에 해당하는 metadata의 userId와 일치하는가.
-        if (ec2Metadata.getUserId() != userId) {
-            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
-        }
-
-        // accountId 검증
-        if (!ec2Metadata.getAccountId().equals(request.accountId())){
-            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
-        }
+        Long ec2ScanId = ec2Metadata.getScanId();
+        log.info("Found latest EC2 scan - ec2ScanId: {}", ec2ScanId);
 
         // region 검증 (region이 지정된 경우에만)
         if (request.region() != null && !request.region().isEmpty()) {

@@ -22,6 +22,9 @@ public class ScanEc2Metadata {
     private String accountId;
     private String createdAt;
 
+    private String gsi2Pk;          // GSI2 Partition Key: USER#{userId}#CASE#{caseId}#ACCOUNT#{accountId}#TYPE#EC2
+    private String gsi2Sk;          // GSI2 Sort Key: CREATED#{createdAt}#EC2#{ec2ScanId}
+
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")
     public String getPk() {
@@ -59,6 +62,18 @@ public class ScanEc2Metadata {
         return createdAt;
     }
 
+    @DynamoDbSecondaryPartitionKey(indexNames = "GSI2PK-GSI2SK-index")
+    @DynamoDbAttribute("GSI2PK")
+    public String getGsi2Pk() {
+        return gsi2Pk;
+    }
+
+    @DynamoDbSecondarySortKey(indexNames = "GSI2PK-GSI2SK-index")
+    @DynamoDbAttribute("GSI2SK")
+    public String getGsi2Sk() {
+        return gsi2Sk;
+    }
+
     public void updatePk(String pk) { this.pk = pk; }
 
     public void updateSk(String sk) { this.sk = sk; }
@@ -72,4 +87,8 @@ public class ScanEc2Metadata {
     public void updateAccountId(String accountId) { this.accountId = accountId; }
 
     public void updateCreatedAt(String createdAt) { this.createdAt = createdAt; }
+
+    public void updateGsi2Pk(String gsi2Pk) { this.gsi2Pk = gsi2Pk; }
+
+    public void updateGsi2Sk(String gsi2Sk) { this.gsi2Sk = gsi2Sk; }
 }
