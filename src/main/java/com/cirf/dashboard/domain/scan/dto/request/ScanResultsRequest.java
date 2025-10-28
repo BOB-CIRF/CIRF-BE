@@ -5,10 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record ScanResultsRequest(
+        @NotNull(message = "caseId는 필수입니다.")
+        Long caseId,
+
         @NotBlank(message = "accountId는 필수입니다.")
         String accountId,
 
-        @NotBlank(message = "region은 필수입니다.")
         String region,
 
         @NotNull(message = "pageNumber는 필수입니다.")

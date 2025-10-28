@@ -26,15 +26,14 @@ public class ScanController {
     private final ScanLogsService scanLogsService;
     private final ScanEc2Service scanEc2Service;
 
-    @GetMapping("/logs/{caseId}")
+    @GetMapping("/logs")
     public ApiResponse<ScanResultsListResponse> getScanResults(
             @RequestHeader("userId") long userId,
-            @PathVariable long caseId,
             @Valid ScanResultsRequest request
     ) {
-        log.info("Received scan results request - userId: {}, caseId: {}, request: {}", userId, caseId, request);
+        log.info("Received scan results request - userId: {}, caseId: {}, request: {}", userId, request.caseId(), request);
 
-        Slice<ScanResultsResponse> scanResults = scanLogsService.getScanResultsByRegion(userId, caseId, request);
+        Slice<ScanResultsResponse> scanResults = scanLogsService.getScanResultsByRegion(userId, request.caseId(), request);
 
         log.info("Scan results retrieved successfully - count: {}", scanResults.getNumberOfElements());
 
@@ -60,13 +59,12 @@ public class ScanController {
         );
     }
 
-    @GetMapping("/ec2/{scanEc2Id}")
+    @GetMapping("/ec2")
     public ApiResponse<ScanEc2ListResponse> getEc2ScanResults(
             @RequestHeader("userId") Long userId,
-            @PathVariable Long scanEc2Id,
             @Valid ScanResultsRequest request
     ){
-        Slice<ScanEc2Response> results = scanEc2Service.getEc2Lists(userId, scanEc2Id, request);
+        Slice<ScanEc2Response> results = scanEc2Service.getEc2Lists(userId, request);
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
                 ResponseMessage.GET_EC2_RESULTS_SUCCESS.getMessage(),

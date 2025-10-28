@@ -7,6 +7,7 @@ public record ScanEc2Response(
         String instanceType,
         String region,
         String status,
+        String platformDetails,
         String publicIp
 ) {
 }

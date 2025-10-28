@@ -24,7 +24,6 @@ public class EnabledInstances {
     private String instanceId;
     private String instanceName;
     private String instanceType;
-    private String instancePlatform;
     private String instancePlatformDetails;
     private String region;
     private String status;
@@ -66,9 +65,6 @@ public class EnabledInstances {
 
     @DynamoDbAttribute("instance_type")
     public String getInstanceType() { return instanceType; }
-
-    @DynamoDbAttribute("platform")
-    public String getPlatform() { return instancePlatform; }
 
     @DynamoDbAttribute("platform_details")
     public String getPlatformDetails() { return instancePlatformDetails; }

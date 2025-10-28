@@ -7,23 +7,15 @@ import com.cirf.dashboard.domain.scan.dto.response.ScanEc2Response;
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
 import com.cirf.dashboard.domain.scan.exception.*;
-import com.cirf.dashboard.domain.scan.service.enums.AwsRegion;
 import com.cirf.dashboard.domain.scan.repository.ScanEc2Repository;
 import com.cirf.dashboard.domain.auth.repository.UserRepository;
+import com.cirf.dashboard.domain.scan.service.enums.AwsRegion;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.*;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -32,6 +24,7 @@ public class ScanEc2Service {
 
     private final ScanEc2Repository scanEc2Repository;
     private final UserRepository userRepository;
+    private final AsyncScanEc2Service asyncScanEc2Service;
 
     public ScanCompletedResponse scanEc2Request(long userId, long caseId, String accountId) {
         // userId 검증
@@ -46,137 +39,44 @@ public class ScanEc2Service {
         Long ec2ScanId = metadata.getScanId();
         log.info("Created EC2 scan with ID: {}", ec2ScanId);
 
-        // 2. 활성화된 리전 목록 조회
-        List<Region> enabledRegions = getEnabledRegions();
-        log.info("Found {} enabled regions", enabledRegions.size());
+        // 2. 비동기 호출 (리전 조회도 비동기 내부에서 수행)
+        log.info("Calling async scan on thread: {}", Thread.currentThread().getName());
+        asyncScanEc2Service.saveScanEc2Instances(ec2ScanId);
+        log.info("Async scan triggered, returning response immediately");
 
-        // 3. 활성화된 리전에서 병렬로 EC2 인스턴스 스캔
-        ExecutorService executorService = Executors.newFixedThreadPool(enabledRegions.size());
-
-        try {
-            List<CompletableFuture<List<EnabledInstances>>> futures = enabledRegions.stream()
-                    .map(region -> CompletableFuture.supplyAsync(
-                            () -> scanEc2InRegion(ec2ScanId, region),
-                            executorService
-                    ))
-                    .toList();
-
-            // 4. 모든 리전의 결과를 수집
-            List<EnabledInstances> allInstances = futures.stream()
-                    .map(CompletableFuture::join)
-                    .flatMap(List::stream)
-                    .toList();
-
-            log.info("Found {} EC2 instances across all regions", allInstances.size());
-
-            // 5. DynamoDB에 저장
-            if (!allInstances.isEmpty()) {
-                scanEc2Repository.saveEnabledInstances(allInstances);
-                log.info("Saved {} EC2 instances to DynamoDB", allInstances.size());
-            }
-
-            return new ScanCompletedResponse(ec2ScanId);
-
-        } catch (ScanEc2Exception e) {
-            log.error("Error during EC2 scan", e);
-            throw new ScanEc2Exception(ErrorMessage.FAILED_CREATE_EC2_REGION);
-        } finally {
-            executorService.shutdown();
-        }
+        return new ScanCompletedResponse(ec2ScanId);
     }
 
-    private List<Region> getEnabledRegions() {
-        // 기본 리전에서 DescribeRegions 호출하여 활성화된 리전 목록 조회
-        try (Ec2Client ec2Client = Ec2Client.builder()
-                .region(Region.US_EAST_1) // 기본 리전 사용
-                .build()) {
+    public Slice<ScanEc2Response> getEc2Lists(long userId, ScanResultsRequest request){
+        log.info("getEc2Lists - userId: {}, caseId: {}, accountId: {}, region: {}",
+                userId, request.caseId(), request.accountId(), request.region());
 
-            DescribeRegionsRequest request = DescribeRegionsRequest.builder()
-                    .allRegions(false) // 활성화된 리전만 조회
-                    .build();
-
-            DescribeRegionsResponse response = ec2Client.describeRegions(request);
-
-            List<Region> enabledRegions = response.regions().stream()
-                    .map(regionInfo -> Region.of(regionInfo.regionName()))
-                    .toList();
-
-            log.info("Enabled regions: {}", enabledRegions.stream()
-                    .map(Region::id)
-                    .collect(Collectors.joining(", ")));
-
-            return enabledRegions;
-
-        } catch (Exception e) {
-            log.error("Error fetching enabled regions, falling back to all regions", e);
-            // 에러 발생 시 모든 리전 목록 반환
-            return AwsRegion.getAllRegions();
-        }
-    }
-
-    private List<EnabledInstances> scanEc2InRegion(Long ec2ScanId, Region region) {
-        List<EnabledInstances> instances = new ArrayList<>();
-
-        try (Ec2Client ec2Client = Ec2Client.builder()
-                .region(region)
-                .build()) {
-
-            log.info("Scanning EC2 instances in region: {}", region.id());
-
-            // DescribeInstances 요청
-            DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
-            DescribeInstancesResponse response = ec2Client.describeInstances(request);
-
-            // 각 Reservation의 인스턴스들을 처리
-            for (Reservation reservation : response.reservations()) {
-                for (Instance instance : reservation.instances()) {
-                    EnabledInstances enabledInstance = scanEc2Repository.createEnabledInstance(ec2ScanId, region.id(), instance);
-                    instances.add(enabledInstance);
-                }
-            }
-
-            log.info("Found {} instances in region: {}", instances.size(), region.id());
-
-        } catch (AwsEc2Exception e) {
-            log.error("AWS EC2 error scanning region: {}", region.id(), e);
-            throw new AwsEc2Exception(ErrorMessage.AWS_EC2_API_ERROR);
-        } catch (Exception e) {
-            log.error("Unexpected error scanning region: {}", region.id(), e);
-            // 특정 리전 스캔 실패 시 빈 리스트 반환 (다른 리전 스캔은 계속 진행)
-        }
-
-        return instances;
-    }
-
-    public Slice<ScanEc2Response> getEc2Lists(long userId, long ec2ScanId, ScanResultsRequest request){
         // userId 검증
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException();
         }
 
-        // ScanEc2 정보 객체 검증
-        ScanEc2Metadata ec2Metadata = scanEc2Repository.getEc2MetadataByEc2ScanId(ec2ScanId)
+        // userId, caseId, accountId로 가장 최근의 EC2 Scan 메타데이터를 가져오기
+        ScanEc2Metadata ec2Metadata = scanEc2Repository.findLatestEc2Scan(userId, request.caseId(), request.accountId())
                 .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));
 
-        // userId 검증 : ec2ScanId에 해당하는 metadata의 userId와 일치하는가.
-        if (ec2Metadata.getUserId() != userId) {
-            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
+        Long ec2ScanId = ec2Metadata.getScanId();
+        log.info("Found latest EC2 scan - ec2ScanId: {}", ec2ScanId);
+
+        // region 검증 (region이 지정된 경우에만)
+        if (request.region() != null && !request.region().isEmpty()) {
+            if (!AwsRegion.isValidRegion(request.region())) {
+                throw new InvalidRegionException(ErrorMessage.INVALID_REGION);
+            }
         }
 
-        // accountId 검증
-        if (!ec2Metadata.getAccountId().equals(request.accountId())){
-            throw new CustomAccessDeniedException(ErrorMessage.CUSTOM_ACCESS_DENIED);
-        }
-
-        // region 검증
-        if (!AwsRegion.isValidRegion(request.region())) {
-            throw new InvalidRegionException(ErrorMessage.INVALID_REGION);
-        }
-
-        // region별 EC2 인스턴스 조회
+        // region별 EC2 인스턴스 조회 (region이 null/empty면 모든 리전 조회)
         List<EnabledInstances> instances = scanEc2Repository.getEc2InstancesByRegion(ec2ScanId, request.region());
 
-        log.info("Found {} instances for ec2ScanId: {}, region: {}", instances.size(), ec2ScanId, request.region());
+        String regionInfo = (request.region() == null || request.region().isEmpty())
+                ? "all regions"
+                : "region: " + request.region();
+        log.info("Found {} instances for ec2ScanId: {}, {}", instances.size(), ec2ScanId, regionInfo);
 
         // EnabledInstances를 ScanEc2Response로 변환
         List<ScanEc2Response> ec2Responses = instances.stream()
@@ -187,6 +87,7 @@ public class ScanEc2Service {
                         instance.getInstanceType(),
                         instance.getRegion(),
                         instance.getStatus(),
+                        instance.getPlatformDetails(),
                         instance.getPublicIp()
                 ))
                 .toList();

@@ -29,7 +29,8 @@ public class ScanLogsRepository {
         DynamoDbTable<ScanLogsMetadata> table = dynamoDbEnhancedClient.table(tableName, TableSchema.fromBean(ScanLogsMetadata.class));
         DynamoDbIndex<ScanLogsMetadata> gsi2 = table.index("GSI2PK-GSI2SK-index");
 
-        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s", userId, caseId, accountId);
+        // TYPE#LOGS를 포함하여 Logs 스캔만 조회
+        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s#TYPE#LOGS", userId, caseId, accountId);
 
         QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
                 .queryConditional(QueryConditional.keyEqualTo(Key.builder()
@@ -67,21 +68,44 @@ public class ScanLogsRepository {
         );
         DynamoDbIndex<EnabledLogs> gsi1 = table.index("GSI1PK-GSI1SK-index");
 
-        String gsi1Pk = String.format("ACCOUNT#%s#LOGTYPE#%s#REG#%s", accountId, logType, region);
-        String gsi1Sk = "SCAN#" + scanId;
+        // GSI1PK는 region을 포함하지 않음
+        String gsi1Pk = String.format("ACCOUNT#%s#LOGTYPE#%s", accountId, logType);
 
-        QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
-                .queryConditional(QueryConditional.keyEqualTo(Key.builder()
-                        .partitionValue(gsi1Pk)
-                        .sortValue(gsi1Sk)
-                        .build()))
-                .limit(1)
-                .build();
+        // region이 null이거나 empty면 모든 리전 검색, 아니면 특정 리전만 검색
+        if (region == null || region.isEmpty()) {
+            // 모든 리전 검색: SK begins_with "SCAN#{scanId}"
+            String gsi1SkPrefix = "SCAN#" + scanId;
 
-        return gsi1.query(queryRequest)
-                .stream()
-                .flatMap(page -> page.items().stream())
-                .findFirst()
-                .isPresent();
+            QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
+                    .queryConditional(QueryConditional.sortBeginsWith(Key.builder()
+                            .partitionValue(gsi1Pk)
+                            .sortValue(gsi1SkPrefix)
+                            .build()))
+                    .limit(1)
+                    .build();
+
+            return gsi1.query(queryRequest)
+                    .stream()
+                    .flatMap(page -> page.items().stream())
+                    .findFirst()
+                    .isPresent();
+        } else {
+            // 특정 리전만 검색: SK begins_with "SCAN#{scanId}#REG#{region}"
+            String gsi1SkPrefix = String.format("SCAN#%d#REG#%s", scanId, region);
+
+            QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
+                    .queryConditional(QueryConditional.sortBeginsWith(Key.builder()
+                            .partitionValue(gsi1Pk)
+                            .sortValue(gsi1SkPrefix)
+                            .build()))
+                    .limit(1)
+                    .build();
+
+            return gsi1.query(queryRequest)
+                    .stream()
+                    .flatMap(page -> page.items().stream())
+                    .findFirst()
+                    .isPresent();
+        }
     }
 }
