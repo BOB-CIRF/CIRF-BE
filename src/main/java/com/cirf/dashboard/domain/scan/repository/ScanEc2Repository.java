@@ -134,9 +134,14 @@ public class ScanEc2Repository {
                 TableSchema.fromBean(EnabledInstances.class)
         );
 
+        // region이 null이거나 empty면 모든 리전 조회, 아니면 특정 리전만 조회
+        String sortKeyPrefix = (region == null || region.isEmpty())
+                ? "REG#"
+                : "REG#" + region + "#";
+
         Key key = Key.builder()
                 .partitionValue("EC2#" + ec2ScanId)
-                .sortValue("REG#" + region + "#")
+                .sortValue(sortKeyPrefix)
                 .build();
 
         return table.query(r -> r.queryConditional(
@@ -168,7 +173,6 @@ public class ScanEc2Repository {
                 .instanceId(instanceId)
                 .instanceName(instanceName)
                 .instanceType(instance.instanceType().toString())
-                .instancePlatform(instance.platform().toString())
                 .instancePlatformDetails(instance.platformDetails())
                 .region(region)
                 .status(instance.state().nameAsString())
