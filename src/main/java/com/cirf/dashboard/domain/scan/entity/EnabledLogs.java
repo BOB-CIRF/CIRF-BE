@@ -20,8 +20,8 @@ public class EnabledLogs {
     private String logRegion;
     private Long logId;
     private String createdAt;
-    private String gsi1Pk; // ACCOUNT#{accountId}#LOGTYPE#{ex.cloudtrail}#REG#{region}
-    private String gsi1Sk; // SCAN#{scanId}
+    private String gsi1Pk; // GSI1 Partition Key: ACCOUNT#{accountId}#LOGTYPE#{logType}
+    private String gsi1Sk; // GSI1 Sort Key: SCAN#{scanId}#REG#{region}
 
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")

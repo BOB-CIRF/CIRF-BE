@@ -25,8 +25,8 @@ public class ScanLogsMetadata {
     private String startedAt;
     private String finishedAt;
 
-    private String gsi2Pk;          // GSI2 Partition Key: USER#{userId}#CASE#{caseId}#ACCOUNT#{accountId}
-    private String gsi2Sk;          // GSI2 Sort Key: START#{startedAt}#SCAN#{scanId}
+    private String gsi2Pk;          // GSI2 Partition Key: USER#{userId}#CASE#{caseId}#ACCOUNT#{accountId}#TYPE#LOGS
+    private String gsi2Sk;          // GSI2 Sort Key: CREATED#{startedAt}#LOGS#{scanId}
 
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")

@@ -52,16 +52,20 @@ public class ScanLogsService {
             throw new ScanNotCompletedException(ErrorMessage.SCAN_NOT_COMPLETED);
         }
 
-        // scanRegion에 조회하려는 region이 없으면 예외 발생
-        String scanPk = "SCAN#" + latestScan.getScanId();
-        String regionSk = "REG#" + request.region();
+        // region이 지정된 경우에만 region 검증
+        if (request.region() != null) {
+            String scanPk = "SCAN#" + latestScan.getScanId();
+            String regionSk = "REG#" + request.region();
 
-        log.debug("Checking region status - scanPk: {}, regionSk: {}", scanPk, regionSk);
+            log.debug("Checking region status - scanPk: {}, regionSk: {}", scanPk, regionSk);
 
-        scanLogsRepository.findScanRegionStatus(scanPk, regionSk)
-                .orElseThrow(() -> new RegionNotFoundException(ErrorMessage.REGION_NOT_FOUND));
+            scanLogsRepository.findScanRegionStatus(scanPk, regionSk)
+                    .orElseThrow(() -> new RegionNotFoundException(ErrorMessage.REGION_NOT_FOUND));
 
-        log.info("Region found, checking enabled logs");
+            log.info("Region found, checking enabled logs");
+        } else {
+            log.info("No specific region requested, checking all regions");
+        }
 
         Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
         return checkEnabledLogsForRegion(latestScan.getScanId(), request.accountId(), request.region(), pageable);
