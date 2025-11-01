@@ -21,6 +21,6 @@ public class CaseCreateRequest {
     @NotBlank(message = "caseDescription은 필수입니다.")
     private String caseDescription;
 
-    @NotEmpty(message = "accountIds는 1개 이상이어야 합니다.")
+    @NotEmpty(message = "계정 ID 목록은 비어있을 수 없습니다.")
     private List<String> accountIds;
 }

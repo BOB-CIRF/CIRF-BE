@@ -7,9 +7,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AccountIdRepository extends JpaRepository<AccountId, Long> {
+
+    /**
+     * accountId 문자열로 AccountId 엔티티 조회 (단건)
+     */
+    Optional<AccountId> findByAccountId(String accountId);  // ✅ 추가!
 
     /** ✅ 문자열 accountId 목록 기준 존재 개수 (중복 포함) */
     long countByAccountIdIn(List<String> accountIds);

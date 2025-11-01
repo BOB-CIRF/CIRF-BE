@@ -283,50 +283,57 @@ public class CaseService {
                     return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
                 });
 
-        // 2) accountIds 존재 여부 검증 (요청은 List<String> 가정)
-        List<String> ids = req.getAccountIds();
-        if (ids == null || ids.isEmpty()) {
+        // 2) accountIds 검증
+        List<String> accountIdStrings = req.getAccountIds();
+        if (accountIdStrings == null || accountIdStrings.isEmpty()) {
             throw new IllegalArgumentException("accountIds는 1개 이상이어야 합니다.");
         }
-        long existing = accountIdRepository.countByAccountIdIn(ids);
-        if (existing != ids.size()) {
-            log.warn("Non-existing accountIds detected. Requested: {}, Existing: {}",
-                    ids.size(), existing);
-            throw new IllegalArgumentException("존재하지 않는 accountId가 포함되어 있습니다.");
-        }
 
-        // 3) IncidentCase 생성/저장 (리스트는 넣지 말 것: 비소유측)
+        // 3) IncidentCase 생성/저장 (먼저 저장해야 ID 생김)
         IncidentCase entity = IncidentCase.builder()
                 .user(user)
                 .caseName(req.getCaseName())
                 .description(req.getCaseDescription())
-                .status(CaseStatus.ACTIVE)   // 기본 상태
+                .status(CaseStatus.ACTIVE)
                 .build();
         IncidentCase saved = incidentCaseRepository.save(entity);
 
-        // 4) 소유측(AccountId)에서 연관관계 설정 후 저장
-        List<AccountId> accounts = accountIdRepository.findByAccountIdIn(ids);
-        for (AccountId a : accounts) {
-            a.setIncidentCase(saved);   // owning side
-        }
-        accountIdRepository.saveAll(accounts);
+        log.info("IncidentCase created - caseId: {}, caseName: {}", saved.getId(), saved.getCaseName());
 
-        // 5) DynamoDB에 IntegrationAccount 저장 ✅ 추가!
-        String pk = String.format("USER#%d#CASE#%d", userId, saved.getId());
+        // 4) AccountId 엔티티 생성 및 저장 ✅ 수정된 부분!
+        List<AccountId> accountEntities = accountIdStrings.stream()
+                .map(accountIdString -> {
+                    // 기존 AccountId 엔티티가 있는지 확인
+                    AccountId accountEntity = accountIdRepository
+                            .findByAccountId(accountIdString)
+                            .orElseGet(() -> {
+                                // 없으면 새로 생성
+                                AccountId newAccount = AccountId.builder()
+                                        .accountId(accountIdString)
+                                        .roleArn("arn:aws:iam::account:role/DefaultRole")  // 기본값
+                                        .roleCheck(false)
+                                        .incidentCase(saved)  // 사례와 연결
+                                        .build();
 
-        List<IntegrationAccount> integrationAccounts = ids.stream()
-                .map(accountId -> IntegrationAccount.builder()
-                        .pk(pk)
-                        .sk(String.format("ACCOUNT#%s", accountId))
-                        .roleArn("")  // 일단 null로 저장
-                        .roleCheck(false)  // 기본값 false
-                        .build())
+                                log.info("Creating new AccountId: {}", accountIdString);
+                                return newAccount;
+                            });
+
+                    // 이미 존재하는 경우 사례와 연결
+                    if (accountEntity.getId() != null) {
+                        accountEntity.setIncidentCase(saved);
+                        log.info("Linking existing AccountId to case: {}", accountIdString);
+                    }
+
+                    return accountEntity;
+                })
                 .collect(Collectors.toList());
 
-        integrationAccountRepository.saveAll(integrationAccounts);
+        // 모두 저장
+        accountIdRepository.saveAll(accountEntities);
 
-        log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}",
-                saved.getId(), saved.getCaseName(), userId);
+        log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}",
+                saved.getId(), saved.getCaseName(), userId, accountEntities.size());
 
         return new CaseCreateResponse(saved.getId());
     }
