@@ -1,6 +1,7 @@
 package com.cirf.dashboard.global.exception;
 
 import com.cirf.dashboard.global.common.dto.ExceptionResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -13,6 +14,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -70,7 +72,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ExceptionResponse> handleAll(Exception e) {
         ExceptionResponse body = ExceptionResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
-
+        log.error("500-ERROR: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
 }
