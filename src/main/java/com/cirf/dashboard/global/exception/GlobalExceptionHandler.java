@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -23,6 +24,12 @@ public class GlobalExceptionHandler {
         ExceptionResponse body = ExceptionResponse.of(e.getStatus(), e.getMessage());
 
         return new ResponseEntity<>(body, e.getStatus());
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ExceptionResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+        ExceptionResponse body = ExceptionResponse.of(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -71,7 +78,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ExceptionResponse> handleAll(Exception e) {
-        ExceptionResponse body = ExceptionResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+        ExceptionResponse body = ExceptionResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
         log.error("500-ERROR: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
