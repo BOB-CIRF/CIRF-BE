@@ -1,5 +1,5 @@
 package com.cirf.dashboard.domain.cases.entity;
-
+// 김도연 새롭게 생성
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
