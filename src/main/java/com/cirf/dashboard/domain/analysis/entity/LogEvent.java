@@ -1,6 +1,8 @@
 package com.cirf.dashboard.domain.analysis.entity;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.DateFormat;
@@ -27,9 +29,11 @@ public class LogEvent {
     private String id;
 
     // ---- 공통 메타 ----
+    @JsonAlias("@timestamp")
     @Field(name = "@timestamp", type = FieldType.Date, format = DateFormat.date_optional_time)
     private Instant timestamp;              // @timestamp
 
+    @JsonProperty("time")
     @Field(type = FieldType.Keyword)
     private String time;                   // 원본 eventTime 문자열 (파싱 문제 회피)
 

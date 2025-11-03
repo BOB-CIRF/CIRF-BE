@@ -52,7 +52,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
 
             // 검색 실행
             boolean hasKeyword = request.keyword() != null && !request.keyword().isBlank();
-            co.elastic.clients.elasticsearch.core.SearchResponse<LogEvent> response = esClient.search(s -> s
+            SearchResponse<LogEvent> response = esClient.search(s -> s
                             .index(indexName)
                             .query(q -> q.bool(boolBuilder.build()))
                             .sort(determineSortOption(request))
@@ -60,13 +60,14 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
                             .size(request.pageSize())
                             .routing(routing)
                             .trackTotalHits(t -> t.enabled(true))
-                            .trackScores(!hasKeyword), // 키워드 없으면 스코어 계산 안 함 (성능 최적화)
+                            .trackScores(hasKeyword),
                     LogEvent.class
             );
 
             return mapSearchResponse(response, request);
 
         } catch (IOException e) {
+            log.error("Elasticsearch search failed - Index: {}, Routing: {}", indexName, routing, e);
             throw new ElasticsearchCommunicationException(ErrorMessage.ELASTICSEARCH_COMMUNICATION_ERROR);
         }
     }

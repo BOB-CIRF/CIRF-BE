@@ -4,25 +4,22 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.ElasticsearchTransport;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.data.elasticsearch.client.ClientConfiguration;
-import org.springframework.data.elasticsearch.client.elc.ElasticsearchConfiguration;
 import org.springframework.data.elasticsearch.repository.config.EnableElasticsearchRepositories;
-
-import java.time.Duration;
 
 @Configuration
 @EnableElasticsearchRepositories(basePackages = "com.cirf.dashboard.domain.analysis.repository")
-@ConditionalOnProperty(name = "spring.elasticsearch.enabled", havingValue = "true", matchIfMissing = false)
-public class ElasticSearchConfig extends ElasticsearchConfiguration {
+public class ElasticSearchConfig {
     @Value("${spring.elasticsearch.username:}")
     private String username;
 
@@ -31,25 +28,6 @@ public class ElasticSearchConfig extends ElasticsearchConfiguration {
 
     @Value("${spring.elasticsearch.uris}")
     private String esUri;
-
-    @Override
-    public ClientConfiguration clientConfiguration() {
-        // Remove http:// or https:// from URI
-        String host = esUri.replace("http://", "").replace("https://", "");
-
-        ClientConfiguration.MaybeSecureClientConfigurationBuilder builder =
-                ClientConfiguration.builder().connectedTo(host);
-
-        // Add authentication if password is provided
-        if (password != null && !password.isEmpty()) {
-            builder.withBasicAuth(username, password);
-        }
-
-        return builder
-                .withConnectTimeout(Duration.ofSeconds(30))
-                .withSocketTimeout(Duration.ofSeconds(30))
-                .build();
-    }
 
     @Bean
     public ElasticsearchClient elasticsearchClient() {
@@ -76,10 +54,17 @@ public class ElasticSearchConfig extends ElasticsearchConfiguration {
             restClient = RestClient.builder(new HttpHost(hostname, port, "http")).build();
         }
 
+        // Create ObjectMapper with Java 8 date/time support
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        System.out.println("=== ElasticsearchClient Bean Created with JavaTimeModule ===");
+
         // Create transport and client
         ElasticsearchTransport transport = new RestClientTransport(
                 restClient,
-                new JacksonJsonpMapper()
+                new JacksonJsonpMapper(objectMapper)
         );
 
         return new ElasticsearchClient(transport);
