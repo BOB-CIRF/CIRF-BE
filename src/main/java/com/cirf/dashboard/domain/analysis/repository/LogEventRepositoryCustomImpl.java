@@ -35,62 +35,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         return IndexCoordinates.of("logs-tenant-" + tenantId + "-default");
     }
 
-    @Override
-    public Optional<Instant> findLatestEventInstant(String tenantId, String caseId) {
-        Criteria criteria = new Criteria("tenantId").is(tenantId)
-                .and(new Criteria("caseId").is(caseId));
-
-        CriteriaQuery q = new CriteriaQuery(criteria);
-        q.addSort(Sort.by(Sort.Order.desc("timestamp")));
-        q.setPageable(PageRequest.of(0, 1));
-
-        SearchHits<LogEvent> hits = operations.search(q, LogEvent.class, dsOfTenant(tenantId));
-        return hits.getSearchHits().stream()
-                .findFirst()
-                .map(h -> h.getContent().getTimestamp()); // LogEvent#getTimestamp()가 Instant라고 가정
-    }
-
-    @Override
-    public Page<LogEvent> search(
-            String tenantId,
-            String caseId,
-            Instant from,
-            Instant to,
-            String activity,
-            Pageable pageable
-    ) {
-        // 상한 미포함(< to)로 경계 중복 방지
-        Criteria criteria = new Criteria("tenantId").is(tenantId)
-                .and(new Criteria("caseId").is(caseId))
-                .and(new Criteria("timestamp").greaterThanEqual(from))
-                .and(new Criteria("timestamp").lessThan(to));
-
-        if (activity != null && !activity.isBlank()) {
-            criteria = criteria.and("activity").is(activity);
-        }
-
-        CriteriaQuery q = new CriteriaQuery(criteria);
-        if (pageable.getSort().isUnsorted()) {
-            q.addSort(Sort.by(Sort.Order.desc("timestamp")));
-        } else {
-            q.addSort(pageable.getSort());
-        }
-        q.setPageable(PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()));
-        q.setTrackTotalHits(true);
-
-        SearchHits<LogEvent> hits = operations.search(q, LogEvent.class, dsOfTenant(tenantId));
-
-        List<LogEvent> content = hits.getSearchHits().stream()
-                .map(h -> {
-                    LogEvent e = h.getContent();
-                    if (e.getId() == null) e.setId(h.getId()); // ES _id 매핑
-                    return e;
-                })
-                .toList();
-
-        return new PageImpl<>(content, pageable, hits.getTotalHits());
-    }
-
     public Page<LogEvent> searchByQuery(String tenantId, LogQueryRequest request) {
         String indexName = "logs-tenant-" + tenantId + "-default";
         String routing = tenantId + "|" + request.caseId();
@@ -127,9 +71,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         }
     }
 
-    /**
-     * Filter context 조건 추가
-     */
     private void addFilterConditions(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
                                      String tenantId,
                                      LogQueryRequest request) {
@@ -158,9 +99,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         addTimeRangeFilter(boolBuilder, request);
     }
 
-    /**
-     * 시간 범위 필터 추가
-     */
     private void addTimeRangeFilter(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
                                      LogQueryRequest request) {
         if (request.startTime() != null && request.endTime() != null) {
@@ -182,10 +120,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         }
     }
 
-    /**
-     * 키워드 검색 추가 (Must context)
-     * 성능 최적화: multi_match + 핵심 필드만 wildcard
-     */
     private void addKeywordSearch(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
                                    LogQueryRequest request) {
         if (request.keyword() == null || request.keyword().isBlank()) {
@@ -222,9 +156,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         ));
     }
 
-    /**
-     * 정렬 옵션 결정
-     */
     private co.elastic.clients.elasticsearch._types.SortOptions determineSortOption(LogQueryRequest request) {
         if (request.keyword() != null && !request.keyword().isBlank()) {
             return co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
@@ -236,9 +167,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         );
     }
 
-    /**
-     * 검색 결과 매핑
-     */
     private Page<LogEvent> mapSearchResponse(SearchResponse<LogEvent> response,
                                               LogQueryRequest request) {
         List<LogEvent> content = response.hits().hits().stream()
