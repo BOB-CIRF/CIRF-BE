@@ -11,7 +11,6 @@ import com.cirf.dashboard.domain.scan.service.ScanEc2Service;
 import com.cirf.dashboard.domain.scan.service.ScanLogsService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +52,6 @@ public class ScanController {
             @RequestHeader("userId") @NotNull Long userId,
             @RequestBody @Valid ScanEc2Request scanEc2Request
             ){
-
         ScanCompletedResponse response = scanEc2Service.scanEc2Request(userId, scanEc2Request.caseId(), scanEc2Request.accountId());
 
         return new ApiResponse<>(
