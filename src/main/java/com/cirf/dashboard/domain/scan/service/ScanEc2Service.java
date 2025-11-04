@@ -41,7 +41,7 @@ public class ScanEc2Service {
 
         // 2. 비동기 호출 (리전 조회도 비동기 내부에서 수행)
         log.info("Calling async scan on thread: {}", Thread.currentThread().getName());
-        asyncScanEc2Service.saveScanEc2Instances(ec2ScanId);
+        asyncScanEc2Service.saveScanEc2Instances(ec2ScanId, accountId);
         log.info("Async scan triggered, returning response immediately");
 
         return new ScanCompletedResponse(ec2ScanId);
