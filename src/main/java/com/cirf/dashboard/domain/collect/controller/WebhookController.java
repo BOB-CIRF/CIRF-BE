@@ -1,0 +1,34 @@
+package com.cirf.dashboard.domain.collect.controller;
+
+import com.cirf.dashboard.domain.collect.dto.ProgressEvent;
+import com.cirf.dashboard.domain.collect.dto.request.WebhookRequest;
+import com.cirf.dashboard.domain.collect.service.ProgressCacheService;
+import com.cirf.dashboard.global.common.dto.ApiResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@Slf4j
+@RestController
+@RequestMapping("/webhook/progress")
+@RequiredArgsConstructor
+public class WebhookController {
+
+    private final ProgressCacheService progressCacheService;
+
+    @PostMapping
+    public ApiResponse<String> post(
+            @RequestBody WebhookRequest request
+    ) {
+        log.info("Webhook received: {}", request.toString());
+
+        // 캐시에 저장하고 대기 중인 요청들에게 알림
+        progressCacheService.updateProgress(ProgressEvent.toEntity(request));
+
+        return new ApiResponse<>(HttpStatus.OK.value(), "success", null);
+    }
+}
