@@ -10,6 +10,7 @@ import com.cirf.dashboard.domain.collect.exception.NotFoundCollectJobException;
 import com.cirf.dashboard.domain.collect.repository.CollectJobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,8 +23,7 @@ public class CollectJobService {
     private final CollectJobRepository collectJobRepository;
     private final UserRepository userRepository;
 
-    public JobListResponse getJobDetail(long userId, long collectId, int pageNumber, int pageSize) {
-
+    public Slice<JobDetailResponse> getJobDetail(long userId, long collectId, int pageNumber, int pageSize) {
         validateUser(userId, collectId);
 
         List<CollectJob> jobs = collectJobRepository.findAllByCollectId(String.valueOf(collectId));
@@ -39,7 +39,14 @@ public class CollectJobService {
                 .toList();
 
         // 페이지네이션 적용
-        return JobListResponse.of(jobDetails, pageNumber, pageSize);
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), jobDetails.size());
+
+        List<JobDetailResponse> pagedContent = jobDetails.subList(start, end);
+        boolean hasNext = end < jobDetails.size();
+
+        return new SliceImpl<>(pagedContent, pageable, hasNext);
     }
 
     public void validateUser(long userId, long collectId) {
