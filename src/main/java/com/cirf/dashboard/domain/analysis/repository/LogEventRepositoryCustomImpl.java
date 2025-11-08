@@ -36,7 +36,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
     }
 
     public Page<LogEvent> searchByQuery(String tenantId, LogQueryRequest request) {
-        String indexName = "logs-tenant-" + tenantId + "-default";
+        String indexName = "logs-tenant-" + tenantId + "-" + request.caseId() + "-default";
         String routing = tenantId + "|" + request.caseId();
 
         try {
