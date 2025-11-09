@@ -31,8 +31,8 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
     private final ElasticsearchOperations operations;
     private final ElasticsearchClient esClient;
 
-    private IndexCoordinates dsOfTenant(String tenantId) {
-        return IndexCoordinates.of("logs-tenant-" + tenantId + "-default");
+    private IndexCoordinates dsOfTenant(String tenantId, String caseId) {
+        return IndexCoordinates.of("logs-tenant-" + tenantId + "-" + caseId + "-default");
     }
 
     public Page<LogEvent> searchByQuery(String tenantId, LogQueryRequest request) {
@@ -201,7 +201,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
             CriteriaQuery query = new CriteriaQuery(criteria);
             query.setRoute(routing);
 
-            SearchHits<LogEvent> hits = operations.search(query, LogEvent.class, dsOfTenant(tenantId));
+            SearchHits<LogEvent> hits = operations.search(query, LogEvent.class, dsOfTenant(tenantId, caseId));
 
             if (hits.hasSearchHits()) {
                 LogEvent event = hits.getSearchHit(0).getContent();
