@@ -1,6 +1,7 @@
 package com.cirf.dashboard.domain.scan.service;
 
 import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
+import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
 import com.cirf.dashboard.domain.scan.dto.response.ScanCompletedResponse;
 import com.cirf.dashboard.domain.scan.dto.response.ScanEc2Response;
@@ -15,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -24,6 +25,7 @@ public class ScanEc2Service {
 
     private final ScanEc2Repository scanEc2Repository;
     private final UserRepository userRepository;
+    private final AccountIdRepository accountIdRepository;
     private final AsyncScanEc2Service asyncScanEc2Service;
 
     public ScanCompletedResponse scanEc2Request(long userId, long caseId, String accountId) {
@@ -47,41 +49,69 @@ public class ScanEc2Service {
         return new ScanCompletedResponse(ec2ScanId);
     }
 
-    public Slice<ScanEc2Response> getEc2Lists(long userId, ScanResultsRequest request){
+    public Slice<ScanEc2Response> getEc2Lists(long userId, ScanResultsRequest request) {
         log.info("getEc2Lists - userId: {}, caseId: {}, accountId: {}, region: {}",
                 userId, request.caseId(), request.accountId(), request.region());
 
-        // userId 검증
+        // 0) 사용자 검증
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException();
         }
 
-        // userId, caseId, accountId로 가장 최근의 EC2 Scan 메타데이터를 가져오기
-        ScanEc2Metadata ec2Metadata = scanEc2Repository.findLatestEc2Scan(userId, request.caseId(), request.accountId())
-                .orElseThrow(() -> new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND));
-
-        Long ec2ScanId = ec2Metadata.getScanId();
-        log.info("Found latest EC2 scan - ec2ScanId: {}", ec2ScanId);
-
-        // region 검증 (region이 지정된 경우에만)
-        if (request.region() != null && !request.region().isEmpty()) {
-            if (!AwsRegion.isValidRegion(request.region())) {
+        // 1) region 검증 (옵션)
+        final String region = request.region();
+        if (region != null && !region.isEmpty()) {
+            if (!AwsRegion.isValidRegion(region)) {
                 throw new InvalidRegionException(ErrorMessage.INVALID_REGION);
             }
         }
 
-        // region별 EC2 인스턴스 조회 (region이 null/empty면 모든 리전 조회)
-        List<EnabledInstances> instances = scanEc2Repository.getEc2InstancesByRegion(ec2ScanId, request.region());
+        // 2) 조회 대상 accountId 목록 확정
+        final List<String> targetAccountIds;
+        if (request.accountId() == null || request.accountId().isEmpty()
+                || "*".equals(request.accountId()) || "ALL".equalsIgnoreCase(request.accountId())) {
+            targetAccountIds = accountIdRepository.findAccountIdsByIncidentCaseId(request.caseId());
+            if (targetAccountIds == null || targetAccountIds.isEmpty()) {
+                throw new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND);
+            }
+        } else {
+            targetAccountIds = List.of(request.accountId());
+        }
+        log.info("Target accounts: {} (caseId: {})", targetAccountIds.size(), request.caseId());
 
-        String regionInfo = (request.region() == null || request.region().isEmpty())
-                ? "all regions"
-                : "region: " + request.region();
-        log.info("Found {} instances for ec2ScanId: {}, {}", instances.size(), ec2ScanId, regionInfo);
+        // 3) accountId별 최신 EC2 스캔 메타데이터 → scanId 수집 (병렬) + scanId -> accountId 매핑 생성
+        Map<Long, String> scanIdToAccountMap = new HashMap<>();
+        for (String accountId : targetAccountIds) {
+            scanEc2Repository.findLatestEc2Scan(userId, request.caseId(), accountId)
+                    .ifPresent(metadata -> scanIdToAccountMap.put(metadata.getScanId(), accountId));
+        }
 
-        // EnabledInstances를 ScanEc2Response로 변환
+        if (scanIdToAccountMap.isEmpty()) {
+            throw new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND);
+        }
+
+        List<Long> ec2ScanIds = new ArrayList<>(scanIdToAccountMap.keySet());
+        log.info("Collected {} latest EC2 scanIds: {}", ec2ScanIds.size(), ec2ScanIds);
+
+        // 4) 스캔ID들로 EC2 인스턴스 일괄 조회 (region 필터 적용)
+        List<EnabledInstances> instances;
+
+        // 권장: 레포/서비스에 배치 메서드가 있을 때
+        instances = scanEc2Repository.getEc2InstancesByRegionIn(ec2ScanIds, region);
+
+        // 만약 위 메서드가 없다면 fallback (for-loop로 병렬/순차 조회)
+        // instances = ec2ScanIds.parallelStream()
+        //         .flatMap(scanId -> scanEc2Repository.getEc2InstancesByRegion(scanId, region).stream())
+        //         .toList();
+
+        String regionInfo = (region == null || region.isEmpty()) ? "all regions" : "region: " + region;
+        log.info("Found {} instances from {} scan(s), {}", instances.size(), ec2ScanIds.size(), regionInfo);
+
+        // 5) DTO 변환 (필요 시 정렬 추가 가능)
         List<ScanEc2Response> ec2Responses = instances.stream()
                 .map(instance -> new ScanEc2Response(
                         instance.getIdxId(),
+                        scanIdToAccountMap.get(instance.getEc2ScanId()),  // scanId로 accountId 매핑
                         instance.getInstanceId(),
                         instance.getInstanceName(),
                         instance.getInstanceType(),
@@ -90,16 +120,20 @@ public class ScanEc2Service {
                         instance.getPlatformDetails(),
                         instance.getPublicIp()
                 ))
+                // .sorted(Comparator.comparing(ScanEc2Response::region).thenComparing(ScanEc2Response::instanceName))
                 .toList();
 
-        // 페이징 처리
+        // 6) 안전한 페이징
         Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
         int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), ec2Responses.size());
-
+        if (start >= ec2Responses.size()) {
+            return new SliceImpl<>(Collections.emptyList(), pageable, false);
+        }
+        int end = Math.min(start + pageable.getPageSize(), ec2Responses.size());
         List<ScanEc2Response> pagedContent = ec2Responses.subList(start, end);
         boolean hasNext = end < ec2Responses.size();
 
         return new SliceImpl<>(pagedContent, pageable, hasNext);
     }
+
 }

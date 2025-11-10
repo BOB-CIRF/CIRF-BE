@@ -6,6 +6,8 @@ import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Configuration
 public class AsyncConfig implements AsyncConfigurer {
@@ -22,5 +24,10 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
         return executor;
+    }
+
+    @Bean(name = "executorService")
+    public ExecutorService executorService() {
+        return Executors.newFixedThreadPool(10);
     }
 }

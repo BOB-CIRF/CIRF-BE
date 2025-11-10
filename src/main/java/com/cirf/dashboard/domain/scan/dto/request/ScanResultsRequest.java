@@ -8,7 +8,6 @@ public record ScanResultsRequest(
         @NotNull(message = "caseId는 필수입니다.")
         Long caseId,
 
-        @NotBlank(message = "accountId는 필수입니다.")
         String accountId,
 
         String region,

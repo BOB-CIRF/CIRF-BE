@@ -31,7 +31,12 @@ public interface AccountIdRepository extends JpaRepository<AccountId, Long> {
     boolean existsByAccountId(String accountId);
 
     /** (옵션) 특정 IncidentCase에 속한 AccountId 목록 조회 */
-    List<AccountId> findByIncidentCase_Id(Long caseId);
+    @Query("""
+        select a.accountId
+        from AccountId a
+        where a.incidentCase.id = :caseId
+    """)
+    List<String> findAccountIdsByIncidentCaseId(@Param("caseId") Long caseId);
 
     /** 🔁 레거시: Long ID 목록을 문자열로 변환해 재사용 (가능하면 새 메서드로 교체 권장) */
     default long countExistingByIds(List<Long> ids) {

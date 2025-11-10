@@ -3,13 +3,10 @@ package com.cirf.dashboard.domain.scan.repository;
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
-import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
-import software.amazon.awssdk.enhanced.dynamodb.DynamoDbIndex;
-import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
-import software.amazon.awssdk.enhanced.dynamodb.Key;
-import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.*;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -19,18 +16,21 @@ import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 import software.amazon.awssdk.services.ec2.model.Instance;
 import software.amazon.awssdk.services.ec2.model.Tag;
 
+import javax.annotation.Nullable;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
+@Slf4j
 @Repository
 @RequiredArgsConstructor
 public class ScanEc2Repository {
 
     private final DynamoDbEnhancedClient dynamoDbEnhancedClient;
     private final DynamoDbClient dynamoDbClient;
+
+    private final ExecutorService executor;
 
     @Value("${aws.dynamodb.table-name}")
     private String tableName;
@@ -196,4 +196,67 @@ public class ScanEc2Repository {
                 .gsi4Pk(gsi4Pk)
                 .build();
     }
+
+    public List<Long> getEc2ScanIds(long userId, long caseId, List<String> targetAccountIds) {
+        return targetAccountIds.parallelStream()
+                .map(acc -> {
+                    try {
+                        return findLatestEc2Scan(userId, caseId, acc)
+                                .map(ScanEc2Metadata::getScanId)
+                                .orElse(null);
+                    } catch (Exception e) {
+                        log.warn("findLatestEc2Scan failed for accountId={}, userId={}, caseId={}",
+                                acc, userId, caseId, e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    public List<EnabledInstances> getEc2InstancesByRegionIn(List<Long> ec2ScanIds, @Nullable String region) {
+        if (ec2ScanIds == null || ec2ScanIds.isEmpty()) return List.of();
+
+        DynamoDbTable<EnabledInstances> table = dynamoDbEnhancedClient.table(
+                tableName,
+                TableSchema.fromBean(EnabledInstances.class)
+        );
+
+        // 병렬 Query (scanId 별)
+        List<CompletableFuture<List<EnabledInstances>>> futures = ec2ScanIds.stream()
+                .map(scanId -> CompletableFuture.supplyAsync(() -> queryByScanId(table, scanId, region), executor))
+                .toList();
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .flatMap(List::stream)
+                .toList();
+    }
+
+    private List<EnabledInstances> queryByScanId(DynamoDbTable<EnabledInstances> table, Long scanId, String region) {
+        // PK = "EC2#scanId", SK starts with "REG#" (METADATA 제외)
+        Key key = Key.builder()
+                .partitionValue("EC2#" + scanId)
+                .sortValue("REG#")
+                .build();
+
+        QueryEnhancedRequest.Builder qb = QueryEnhancedRequest.builder()
+                .queryConditional(QueryConditional.sortBeginsWith(key));  // SK가 REG#로 시작하는 것만
+
+        // region 필터가 있으면 추가 (FilterExpression은 DynamoDB post-filter임)
+        if (region != null && !region.isBlank()) {
+            qb.filterExpression(Expression.builder()
+                    .expression("#r = :region")
+                    .putExpressionName("#r", "region")
+                    .putExpressionValue(":region", AttributeValue.builder().s(region).build())
+                    .build());
+        }
+
+        return table.query(qb.build())
+                .items()
+                .stream()
+                .toList();
+    }
+
 }
