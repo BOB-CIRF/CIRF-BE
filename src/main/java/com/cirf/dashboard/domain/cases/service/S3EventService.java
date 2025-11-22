@@ -3,6 +3,7 @@ package com.cirf.dashboard.domain.cases.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
@@ -87,6 +88,7 @@ public class S3EventService {
     /**
      * 버킷 내 모든 객체 삭제 후 버킷 삭제
      */
+    @Async
     public void deleteBucketWithContents(String bucketName) {
         try {
             // 1. 버킷 내 모든 객체 조회 및 삭제

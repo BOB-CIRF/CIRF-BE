@@ -20,6 +20,7 @@ public enum ErrorMessage {
     // 404 Not Found
     CASE_NOT_FOUND("사례를 찾을 수 없습니다."),
     ACCOUNT_NOT_FOUND("계정을 찾을 수 없습니다."),
+    BUCKET_NOT_FOUND("버킷을 찾을 수 없습니다."),
 
     // 500 Internal Server Error
     INTERNAL_SERVER_ERROR("서버 내부에 난 오류입니다.");

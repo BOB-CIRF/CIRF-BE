@@ -12,6 +12,7 @@ import com.cirf.dashboard.domain.cases.dto.request.CaseUpdateRequest;
 import com.cirf.dashboard.domain.cases.dto.response.CaseUpdateResponse;
 import com.cirf.dashboard.domain.cases.dto.response.CaseDetailResponse;
 import com.cirf.dashboard.domain.cases.entity.*;
+import com.cirf.dashboard.domain.cases.exception.NotFoundBucketException;
 import com.cirf.dashboard.domain.cases.repository.CaseBucketRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -349,6 +350,14 @@ public class CaseService {
         incidentCaseRepository.delete(incidentCase);
 
         log.info("Case deleted successfully - caseId: {}, userId: {}", caseId, userId);
+
+        CaseBucket bucket = caseBucketRepository.findCaseBucketByUserIdAndCaseId(userId, caseId);
+
+        if (bucket == null) {
+            throw new NotFoundBucketException(ErrorMessage.BUCKET_NOT_FOUND);
+        }
+
+        s3EventService.deleteBucketWithContents(bucket.getBucketName());
 
         return new CaseDeleteResponse(caseId);
     }
