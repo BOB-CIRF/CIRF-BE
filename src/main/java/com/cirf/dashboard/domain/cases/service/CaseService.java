@@ -327,13 +327,31 @@ public class CaseService {
 
                     return accountEntity;
                 })
-                .collect(Collectors.toList());
+                .toList();
 
         // 모두 저장
         accountIdRepository.saveAll(accountEntities);
 
         log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}",
                 saved.getId(), saved.getCaseName(), userId, accountEntities.size());
+
+        // 5) IntegrationAccount 생성 및 저장 (DynamoDB)
+        List<IntegrationAccount> accounts = req.getAccountIds().stream()
+                .map(accountIdString -> IntegrationAccount.builder()
+                        .pk("USER#%d#CASE#%d".formatted(userId, saved.getId()))
+                        .sk("ACCOUNT#%s".formatted(accountIdString))
+                        .roleArn("arn:aws:iam::%s:role/IRAutomationRole".formatted(accountIdString))
+                        .roleCheck(false)
+                        .accountId(accountIdString)
+                        .userId(userId)
+                        .caseId(saved.getId())
+                        .build()
+                )
+                .toList();
+
+        integrationAccountRepository.saveAll(accounts);
+
+        log.info("IntegrationAccounts created - count: {}", accounts.size());
 
         return new CaseCreateResponse(saved.getId());
     }

@@ -1,9 +1,6 @@
 package com.cirf.dashboard.domain.cases.entity;
 // 김도연 새롭게 생성
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortKey;
@@ -11,6 +8,7 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttri
 
 @DynamoDbBean
 @Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -20,15 +18,14 @@ public class IntegrationAccount {
     private String sk;  // ACCOUNT#{account_id}
     private String roleArn;
     private Boolean roleCheck;
+    private String accountId;
+    private Long userId;
+    private Long caseId;
 
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")
     public String getPk() {
         return pk;
-    }
-
-    public void setPk(String pk) {
-        this.pk = pk;
     }
 
     @DynamoDbSortKey
@@ -37,25 +34,22 @@ public class IntegrationAccount {
         return sk;
     }
 
-    public void setSk(String sk) {
-        this.sk = sk;
-    }
-
-    @DynamoDbAttribute("roleArn")
+    @DynamoDbAttribute("role_arn")
     public String getRoleArn() {
         return roleArn;
     }
 
-    public void setRoleArn(String roleArn) {
-        this.roleArn = roleArn;
-    }
-
-    @DynamoDbAttribute("roleCheck")
+    @DynamoDbAttribute("role_check")
     public Boolean getRoleCheck() {
         return roleCheck;
     }
 
-    public void setRoleCheck(Boolean roleCheck) {
-        this.roleCheck = roleCheck;
-    }
+    @DynamoDbAttribute("account_id")
+    public String getAccountId() { return accountId; }
+
+    @DynamoDbAttribute("user_id")
+    public Long getUserId() { return userId; }
+
+    @DynamoDbAttribute("case_id")
+    public Long getCaseId() { return caseId; }
 }
