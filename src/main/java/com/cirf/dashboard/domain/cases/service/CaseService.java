@@ -1,96 +1,8 @@
-//package com.cirf.dashboard.domain.cases.service;
-//
-//import com.cirf.dashboard.domain.auth.entity.User;
-//import com.cirf.dashboard.domain.auth.repository.UserRepository;  // 기존 auth 도메인의 UserRepository 사용
-//import com.cirf.dashboard.domain.cases.dto.request.CaseCreateRequest;
-//import com.cirf.dashboard.domain.cases.dto.response.CaseCreateResponse;
-//import com.cirf.dashboard.domain.cases.entity.AccountId;
-//import com.cirf.dashboard.domain.cases.entity.CaseStatus;
-//import com.cirf.dashboard.domain.cases.entity.IncidentCase;
-//import com.cirf.dashboard.domain.cases.exception.AccessDeniedException;
-//import com.cirf.dashboard.domain.cases.exception.ErrorMessage;
-//import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
-//import com.cirf.dashboard.domain.cases.repository.IncidentCaseRepository;
-//import lombok.RequiredArgsConstructor;
-//import lombok.extern.slf4j.Slf4j;
-//import org.springframework.stereotype.Service;
-//import org.springframework.transaction.annotation.Transactional;
-//
-//import java.util.List;
-//
-//@Slf4j
-//@Service
-//@RequiredArgsConstructor
-//public class CaseService {
-//
-//    private final IncidentCaseRepository incidentCaseRepository;
-//    private final AccountIdRepository accountIdRepository;
-//    private final UserRepository userRepository;  // auth 도메인의 기존 UserRepository 사용
-//
-//    @Transactional
-//    public CaseCreateResponse createCase(Long userId, CaseCreateRequest req) {
-//        // userId 검증 및 User 엔티티 조회
-//        if (userId == null || userId <= 0) {
-//            log.warn("Invalid userId attempted: {}", userId);
-//            throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-//        }
-//
-//        // User 엔티티 조회 (존재하지 않으면 예외 발생)
-//        User user = userRepository.findById(userId)
-//                .orElseThrow(() -> {
-//                    log.warn("User not found with id: {}", userId);
-//                    return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-//                });
-//
-//        // accountIds 존재 여부 확인
-//        long exists = accountIdRepository.countExistingByIds(req.getAccountIds());
-//        if (exists != req.getAccountIds().size()) {
-//            log.warn("Non-existing accountIds detected. Requested: {}, Existing: {}",
-//                    req.getAccountIds().size(), exists);
-//            throw new IllegalArgumentException("존재하지 않는 accountId가 포함되어 있습니다.");
-//        }
-//
-//        // IncidentCase 엔티티 생성 (정적 팩토리 메서드 사용)
-////        IncidentCase entity =  IncidentCase.builder().
-////        .req.getCaseName(),
-////                req.getCaseDescription(),
-////                userId,
-////                req.getAccountIds().build
-////        );
-//
-//        List<String> ids = req.getAccountIds(); // List<String>
-//        long existing = accountIdRepository.countByAccountIdIn(ids);
-//        if (existing != ids.size()) {
-//            throw new IllegalArgumentException("존재하지 않는 accountId가 포함되어 있습니다.");
-//        }
-//
-//
-//        List<AccountId> accountIds = accountIdRepository.findByAccountId(req.getAccountIds());
-//
-//        IncidentCase entity = IncidentCase.builder()
-//                .user(user)
-//                .caseName(req.getCaseName())
-//                .description(req.getCaseDescription())
-//                .status(CaseStatus.ACTIVE)
-//                .accountIdList(accountIds)
-//                .build();
-//
-//        // 엔티티 저장
-//        IncidentCase saved = incidentCaseRepository.save(entity);
-//
-//        // AccountId 엔티티들과 IncidentCase의 관계 설정 (필요한 경우)
-//        // updateAccountIdRelations(saved, req.getAccountIds());
-//
-//        log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}",
-//                saved.getId(), saved.getCaseName(), userId);
-//
-//        return new CaseCreateResponse(saved.getId());
-//    }
-//}
-
 package com.cirf.dashboard.domain.cases.service;
 
+import com.cirf.dashboard.domain.auth.entity.Tenant;
 import com.cirf.dashboard.domain.auth.entity.User;
+import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import com.cirf.dashboard.domain.cases.dto.request.CaseCreateRequest;
 import com.cirf.dashboard.domain.cases.dto.response.CaseCreateResponse;
@@ -99,23 +11,23 @@ import com.cirf.dashboard.domain.cases.dto.response.CaseListResponse;
 import com.cirf.dashboard.domain.cases.dto.request.CaseUpdateRequest;
 import com.cirf.dashboard.domain.cases.dto.response.CaseUpdateResponse;
 import com.cirf.dashboard.domain.cases.dto.response.CaseDetailResponse;
+import com.cirf.dashboard.domain.cases.entity.*;
+import com.cirf.dashboard.domain.cases.repository.CaseBucketRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import java.util.stream.Collectors;
-import com.cirf.dashboard.domain.cases.entity.AccountId;
-import com.cirf.dashboard.domain.cases.entity.CaseStatus;
-import com.cirf.dashboard.domain.cases.entity.IncidentCase;
+
 import com.cirf.dashboard.domain.cases.exception.AccessDeniedException;
 import com.cirf.dashboard.domain.cases.exception.ErrorMessage;
 import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
 import com.cirf.dashboard.domain.cases.repository.IncidentCaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.cirf.dashboard.domain.cases.entity.IntegrationAccount;
 import com.cirf.dashboard.domain.cases.repository.IntegrationAccountRepository;
 
 import java.util.List;
@@ -129,6 +41,17 @@ public class CaseService {
     private final AccountIdRepository accountIdRepository;
     private final UserRepository userRepository;
     private final IntegrationAccountRepository integrationAccountRepository;
+    private final CaseBucketRepository caseBucketRepository;
+
+    private final S3ConfigService s3ConfigService;
+    private final S3EventService s3EventService;
+
+    @Value("${aws.sqs.shared-queue-arn}")
+    private String sharedQueueArn;
+
+    @Value("${aws.sqs.shared-queue-url}")
+    private String sharedQueueUrl;
+
 
     /**
      * 사례 목록 조회 (페이징)
@@ -204,11 +127,7 @@ public class CaseService {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("User not found with id: {}", userId);
-                    return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-                });
+        validateUser(userId);
 
         // 2) 사례 조회
         IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
@@ -283,6 +202,8 @@ public class CaseService {
                     return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
                 });
 
+        Tenant tenant = user.getTenant();
+
         // 2) accountIds 검증
         List<String> accountIdStrings = req.getAccountIds();
         if (accountIdStrings == null || accountIdStrings.isEmpty()) {
@@ -299,6 +220,25 @@ public class CaseService {
         IncidentCase saved = incidentCaseRepository.save(entity);
 
         log.info("IncidentCase created - caseId: {}, caseName: {}", saved.getId(), saved.getCaseName());
+
+        // 4) S3 버킷 생성
+        String bucketName = null;
+        try {
+            bucketName = s3EventService.createCaseBucket(tenant.getId(), saved.getId());
+            log.info("S3 bucket created for case {} : {}", saved.getId(), bucketName);
+        } catch (Exception e) {
+            log.error("Failed to create S3 bucket for case {}: {}", saved.getId(), e.getMessage());
+        }
+
+        // 5) S3 → 공유 SQS 이벤트 알림 설정
+        if (bucketName != null) {
+            try {
+                s3ConfigService.setupS3ToSqsNotification(bucketName, sharedQueueArn, sharedQueueUrl);
+                log.info("✅ S3 to shared SQS notification configured for case {} -> {}", saved.getId(), sharedQueueArn);
+            } catch (Exception e) {
+                log.error("Failed to setup S3-SQS notification for case {}: {}", saved.getId(), e.getMessage());
+            }
+        }
 
         // 4) AccountId 엔티티 생성 및 저장 ✅ 수정된 부분!
         List<AccountId> accountEntities = accountIdStrings.stream()
@@ -335,7 +275,14 @@ public class CaseService {
         log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}",
                 saved.getId(), saved.getCaseName(), userId, accountEntities.size());
 
-        // 5) IntegrationAccount 생성 및 저장 (DynamoDB)
+        // DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
+        createIntegrationAccount(userId, req, saved);
+        createCaseBucket(userId, saved.getId(), bucketName);
+
+        return new CaseCreateResponse(saved.getId());
+    }
+
+    private void createIntegrationAccount(long userId, CaseCreateRequest req, IncidentCase saved){
         List<IntegrationAccount> accounts = req.getAccountIds().stream()
                 .map(accountIdString -> IntegrationAccount.builder()
                         .pk("USER#%d#CASE#%d".formatted(userId, saved.getId()))
@@ -352,8 +299,18 @@ public class CaseService {
         integrationAccountRepository.saveAll(accounts);
 
         log.info("IntegrationAccounts created - count: {}", accounts.size());
+    }
 
-        return new CaseCreateResponse(saved.getId());
+    private void createCaseBucket(long userId, long caseId, String bucketName) {
+        CaseBucket caseBucket = CaseBucket.builder()
+                .pk("BUCKET#USER#%d#CASE#%d".formatted(userId, caseId))
+                .sk("METADATA")
+                .userId(userId)
+                .caseId(caseId)
+                .bucketName(bucketName)
+                .build();
+
+        caseBucketRepository.save(caseBucket);
     }
 
     @Transactional
@@ -365,11 +322,7 @@ public class CaseService {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("User not found with id: {}", userId);
-                    return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-                });
+        validateUser(userId);
 
         // 2) 사례 조회
         IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
@@ -412,11 +365,7 @@ public class CaseService {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> {
-                    log.warn("User not found with id: {}", userId);
-                    return new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-                });
+        validateUser(userId);
 
         // 2) 사례 조회
         IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
@@ -452,7 +401,11 @@ public class CaseService {
                 .build();
     }
 
+    public void validateUser(long userId) {
+        // userId 검증
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException();
+        }
+    }
 
-
-
-} // 클래스 닫는 중괄호 - 이 위치 확인!
+}

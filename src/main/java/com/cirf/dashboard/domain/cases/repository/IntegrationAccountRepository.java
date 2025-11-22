@@ -16,7 +16,7 @@ import java.util.List;
 public class IntegrationAccountRepository {
 
     private final DynamoDbEnhancedClient dynamoDbEnhancedClient;
-    private static final String TABLE_NAME = "cirf"; // 테이블명 변경 필요 시 수정
+    private static final String TABLE_NAME = "cirf";
 
     public void save(IntegrationAccount integrationAccount) {
         try {
