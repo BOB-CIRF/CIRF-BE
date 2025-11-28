@@ -4,6 +4,20 @@ files:
   - source: /
     destination: /home/ec2-user/cirf-be
 
+permissions:
+  - object: /home/ec2-user/cirf-be
+    owner: ec2-user
+    group: ec2-user
+    mode: 755
+    type:
+      - directory
+  - object: /home/ec2-user/cirf-be
+    owner: ec2-user
+    group: ec2-user
+    mode: 644
+    type:
+      - file
+
 hooks:
   BeforeInstall:
     - location: scripts/stop-app.sh
