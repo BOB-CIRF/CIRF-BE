@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 @EnableAsync
 @EnableJpaAuditing
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = "com.cirf")
 @EntityScan(basePackages = {
 	"com.cirf.dashboard.domain.auth.entity",
 	"com.cirf.dashboard.domain.cases.entity"
