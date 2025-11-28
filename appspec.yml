@@ -1,0 +1,21 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ec2-user/cirf-be
+
+hooks:
+  BeforeInstall:
+    - location: scripts/stop-app.sh
+      timeout: 60
+      runas: ec2-user
+
+  AfterInstall:
+    - location: scripts/install-deps.sh
+      timeout: 300
+      runas: ec2-user
+
+  ApplicationStart:
+    - location: scripts/start-app.sh
+      timeout: 300
+      runas: ec2-user
