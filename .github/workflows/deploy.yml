@@ -23,6 +23,9 @@ jobs:
           ${{ secrets.APPLICATION_PROPERTIES }}
           EOF
 
+      - name: gradlew 실행 권한 부여
+        run: chmod +x ./gradlew
+
       - name: 테스트 및 빌드
         run: ./gradlew clean build
 
