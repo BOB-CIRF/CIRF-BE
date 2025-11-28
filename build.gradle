@@ -43,6 +43,8 @@ dependencies {
 	// Swagger
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
 
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
 	// ElasticSearch
 	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
 
