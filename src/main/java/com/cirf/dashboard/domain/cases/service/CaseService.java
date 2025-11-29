@@ -277,22 +277,23 @@ public class CaseService {
                 saved.getId(), saved.getCaseName(), userId, accountEntities.size());
 
         // DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
-        createIntegrationAccount(userId, req, saved);
+        createIntegrationAccount(user, req, saved);
         createCaseBucket(userId, saved.getId(), bucketName);
 
         return new CaseCreateResponse(saved.getId());
     }
 
-    private void createIntegrationAccount(long userId, CaseCreateRequest req, IncidentCase saved){
+    private void createIntegrationAccount(User user, CaseCreateRequest req, IncidentCase saved){
         List<IntegrationAccount> accounts = req.getAccountIds().stream()
                 .map(accountIdString -> IntegrationAccount.builder()
-                        .pk("USER#%d#CASE#%d".formatted(userId, saved.getId()))
+                        .pk("USER#%d#CASE#%d".formatted(user.getId(), saved.getId()))
                         .sk("ACCOUNT#%s".formatted(accountIdString))
                         .roleArn("arn:aws:iam::%s:role/IRAutomationRole".formatted(accountIdString))
                         .roleCheck(false)
                         .accountId(accountIdString)
-                        .userId(userId)
+                        .userId(user.getId())
                         .caseId(saved.getId())
+                        .tenantId(user.getTenant().getId())
                         .build()
                 )
                 .toList();

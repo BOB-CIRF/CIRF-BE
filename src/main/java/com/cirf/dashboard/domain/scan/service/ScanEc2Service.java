@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.scan.service;
 
+import com.cirf.dashboard.domain.auth.entity.User;
 import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
 import com.cirf.dashboard.domain.scan.dto.request.ScanResultsRequest;
@@ -30,12 +31,10 @@ public class ScanEc2Service {
 
     public ScanCompletedResponse scanEc2Request(long userId, long caseId, String accountId) {
         // userId 검증
-        if (!userRepository.existsById(userId)) {
-            throw new UserNotFoundException();
-        }
+        User user = userRepository.findById(userId).orElseThrow(UserNotFoundException::new);
 
         // 1. ScanEc2Metadata 생성
-        ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(userId, caseId, accountId)
+        ScanEc2Metadata metadata = scanEc2Repository.createScanEc2Metadata(user, caseId, accountId)
                 .orElseThrow(() -> new ScanEc2MetadataCreationException(ErrorMessage.FAILED_CREATE_EC2_METADATA));
 
         Long ec2ScanId = metadata.getScanId();

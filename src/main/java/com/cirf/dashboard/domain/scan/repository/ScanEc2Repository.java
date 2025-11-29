@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.scan.repository;
 
+import com.cirf.dashboard.domain.auth.entity.User;
 import com.cirf.dashboard.domain.scan.entity.EnabledInstances;
 import com.cirf.dashboard.domain.scan.entity.ScanEc2Metadata;
 import lombok.RequiredArgsConstructor;
@@ -35,7 +36,7 @@ public class ScanEc2Repository {
     @Value("${aws.dynamodb.table-name}")
     private String tableName;
 
-    public Optional<ScanEc2Metadata> createScanEc2Metadata(long userId, long caseId, String accountId){
+    public Optional<ScanEc2Metadata> createScanEc2Metadata(User user, long caseId, String accountId){
         // 1. Counter를 사용하여 새로운 ec2ScanId 생성
         Long newEc2ScanId = getNextEc2ScanId();
 
@@ -45,15 +46,16 @@ public class ScanEc2Repository {
         String createdAt = Instant.now().toString();
 
         // GSI2 키 생성 (TYPE을 포함하여 Logs Scan과 구별)
-        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s#TYPE#EC2", userId, caseId, accountId);
+        String gsi2Pk = String.format("USER#%d#CASE#%d#ACCOUNT#%s#TYPE#EC2", user.getId(), caseId, accountId);
         String gsi2Sk = String.format("CREATED#%s#EC2#%d", createdAt, newEc2ScanId);
 
         ScanEc2Metadata metadata = ScanEc2Metadata.builder()
                 .pk(pk)
                 .sk(sk)
                 .ec2ScanId(newEc2ScanId)
-                .userId(userId)
+                .userId(user.getId())
                 .caseId(caseId)
+                .tenantId(user.getTenant().getId())
                 .accountId(accountId)
                 .createdAt(createdAt)
                 .gsi2Pk(gsi2Pk)
