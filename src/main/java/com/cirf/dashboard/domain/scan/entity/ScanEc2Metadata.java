@@ -19,6 +19,7 @@ public class ScanEc2Metadata {
     private Long ec2ScanId;
     private Long userId;
     private Long caseId;
+    private Long tenantId;
     private String accountId;
     private String createdAt;
 
@@ -45,6 +46,11 @@ public class ScanEc2Metadata {
     @DynamoDbAttribute("user_id")
     public Long getUserId() {
         return userId;
+    }
+
+    @DynamoDbAttribute("tenant_id")
+    public Long getTenantId() {
+        return tenantId;
     }
 
     @DynamoDbAttribute("case_id")
