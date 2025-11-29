@@ -21,6 +21,7 @@ public class IntegrationAccount {
     private String accountId;
     private Long userId;
     private Long caseId;
+    private Long tenantId;
 
     @DynamoDbPartitionKey
     @DynamoDbAttribute("PK")
@@ -52,4 +53,7 @@ public class IntegrationAccount {
 
     @DynamoDbAttribute("case_id")
     public Long getCaseId() { return caseId; }
+
+    @DynamoDbAttribute("tenant_id")
+    public Long getTenantId() { return tenantId; }
 }
