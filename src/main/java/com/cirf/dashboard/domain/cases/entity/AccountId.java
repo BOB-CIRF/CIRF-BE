@@ -31,10 +31,5 @@ public class AccountId {
     @Column(nullable = false, name = "role_check")
     private Boolean roleCheck;
 
-    //김도연 새롭게 추가
-    public void setIncidentCase(IncidentCase incidentCase) {
-        this.incidentCase = incidentCase;
-    }
-
 }
 
