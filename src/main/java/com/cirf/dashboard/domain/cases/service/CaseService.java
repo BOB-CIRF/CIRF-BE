@@ -12,12 +12,15 @@ import com.cirf.dashboard.domain.cases.dto.request.CaseUpdateRequest;
 import com.cirf.dashboard.domain.cases.dto.response.CaseUpdateResponse;
 import com.cirf.dashboard.domain.cases.dto.response.CaseDetailResponse;
 import com.cirf.dashboard.domain.cases.entity.*;
+import com.cirf.dashboard.domain.cases.exception.ExistsAccountIdException;
 import com.cirf.dashboard.domain.cases.exception.NotFoundBucketException;
 import com.cirf.dashboard.domain.cases.repository.CaseBucketRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.cirf.dashboard.domain.cases.exception.AccessDeniedException;
@@ -97,7 +100,7 @@ public class CaseService {
                             .caseName(incidentCase.getCaseName())
                             .caseDescription(incidentCase.getDescription())
                             .status(incidentCase.getStatus().name())
-                            .analystName(incidentCase.getUser().getUserName()) // ✅ 수정!
+                            .analystName(incidentCase.getUser().getUserName())
                             .accountIds(accountIds)
                             .build();
                 })
@@ -116,9 +119,7 @@ public class CaseService {
                 .build();
     }
 
-    /**
-     * 사례 수정 (부분 수정)
-     */
+
     @Transactional
     public CaseUpdateResponse updateCase(Long userId, Long caseId, CaseUpdateRequest req) {
 
@@ -128,7 +129,7 @@ public class CaseService {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        validateUser(userId);
+        User user = userRepository.findById(userId).orElseThrow(()-> new AccessDeniedException(ErrorMessage.ACCESS_DENIED));
 
         // 2) 사례 조회
         IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
@@ -154,35 +155,30 @@ public class CaseService {
 
         // 5) accountIds 수정 (요청에 포함된 경우에만)
         if (req.getAccountIds() != null && !req.getAccountIds().isEmpty()) {
+            incidentCase.getAccountIdList().clear();
 
-            // 5-1) 새로운 accountIds 검증
-            List<String> newIds = req.getAccountIds();
-            long existing = accountIdRepository.countByAccountIdIn(newIds);
-            if (existing != newIds.size()) {
-                log.warn("Non-existing accountIds detected. Requested: {}, Existing: {}",
-                        newIds.size(), existing);
-                throw new IllegalArgumentException("존재하지 않는 accountId가 포함되어 있습니다.");
+            for (String newAccount : req.getAccountIds()) {
+                Optional<AccountId> accountEntity = accountIdRepository.findByAccountId(newAccount);
+
+                if (accountEntity.isPresent() && !accountEntity.get().getIncidentCase().getId().equals(incidentCase.getId())) {
+                    throw new ExistsAccountIdException(ErrorMessage.EXISTS_ACCOUNT_ID);
+                }
+
+                AccountId account = AccountId.builder()
+                        .incidentCase(incidentCase)
+                        .accountId(newAccount)
+                        .roleArn("arn:aws:iam::%s:role/IRAutomationRole".formatted(newAccount))
+                        .roleCheck(true)
+                        .build();
+
+                incidentCase.getAccountIdList().add(account);
             }
 
-            // 5-2) 기존 연결 해제
-            List<AccountId> oldAccounts = accountIdRepository.findByIncidentCaseId(caseId);
-            for (AccountId account : oldAccounts) {
-                account.setIncidentCase(null);
-            }
-            accountIdRepository.saveAll(oldAccounts);
+            integrationAccountRepository.deleteByUserIdAndCaseId(userId, caseId);
+            createIntegrationAccount(user, req.getAccountIds(), incidentCase);
 
-            // 5-3) 새로운 연결 설정
-            List<AccountId> newAccounts = accountIdRepository.findByAccountIdIn(newIds);
-            for (AccountId account : newAccounts) {
-                account.setIncidentCase(incidentCase);
-            }
-            accountIdRepository.saveAll(newAccounts);
-
-            log.info("AccountIds updated for case {} - old count: {}, new count: {}",
-                    caseId, oldAccounts.size(), newAccounts.size());
         }
 
-        // 6) 변경사항 저장 (Dirty Checking으로 자동 저장됨)
         log.info("Case updated successfully - caseId: {}, userId: {}", caseId, userId);
 
         return new CaseUpdateResponse(caseId);
@@ -211,6 +207,14 @@ public class CaseService {
             throw new IllegalArgumentException("accountIds는 1개 이상이어야 합니다.");
         }
 
+        for (String accountIdString : accountIdStrings) {
+            Optional<AccountId> accountEntity = accountIdRepository.findByAccountId(accountIdString);
+
+            if (accountEntity.isPresent()) {
+                throw new ExistsAccountIdException(ErrorMessage.EXISTS_ACCOUNT_ID);
+            }
+        }
+
         // 3) IncidentCase 생성/저장 (먼저 저장해야 ID 생김)
         IncidentCase entity = IncidentCase.builder()
                 .user(user)
@@ -221,6 +225,16 @@ public class CaseService {
         IncidentCase saved = incidentCaseRepository.save(entity);
 
         log.info("IncidentCase created - caseId: {}, caseName: {}", saved.getId(), saved.getCaseName());
+
+        accountIdStrings.forEach(accountIdString -> {
+            AccountId account = AccountId.builder()
+                    .accountId(accountIdString)
+                    .incidentCase(saved)
+                    .roleArn("arn:aws:iam::%s:role/IRAutomationRole".formatted(accountIdString))
+                    .roleCheck(true)
+                    .build();
+            saved.getAccountIdList().add(account);
+        });
 
         // 4) S3 버킷 생성
         String bucketName = null;
@@ -235,61 +249,29 @@ public class CaseService {
         if (bucketName != null) {
             try {
                 s3ConfigService.setupS3ToSqsNotification(bucketName, sharedQueueArn, sharedQueueUrl);
-                log.info("✅ S3 to shared SQS notification configured for case {} -> {}", saved.getId(), sharedQueueArn);
+                log.info("S3 to shared SQS notification configured for case {} -> {}", saved.getId(), sharedQueueArn);
             } catch (Exception e) {
                 log.error("Failed to setup S3-SQS notification for case {}: {}", saved.getId(), e.getMessage());
             }
         }
 
-        // 4) AccountId 엔티티 생성 및 저장 ✅ 수정된 부분!
-        List<AccountId> accountEntities = accountIdStrings.stream()
-                .map(accountIdString -> {
-                    // 기존 AccountId 엔티티가 있는지 확인
-                    AccountId accountEntity = accountIdRepository
-                            .findByAccountId(accountIdString)
-                            .orElseGet(() -> {
-                                // 없으면 새로 생성
-                                AccountId newAccount = AccountId.builder()
-                                        .accountId(accountIdString)
-                                        .roleArn("arn:aws:iam::account:role/DefaultRole")  // 기본값
-                                        .roleCheck(false)
-                                        .incidentCase(saved)  // 사례와 연결
-                                        .build();
-
-                                log.info("Creating new AccountId: {}", accountIdString);
-                                return newAccount;
-                            });
-
-                    // 이미 존재하는 경우 사례와 연결
-                    if (accountEntity.getId() != null) {
-                        accountEntity.setIncidentCase(saved);
-                        log.info("Linking existing AccountId to case: {}", accountIdString);
-                    }
-
-                    return accountEntity;
-                })
-                .toList();
-
-        // 모두 저장
-        accountIdRepository.saveAll(accountEntities);
-
         log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}",
-                saved.getId(), saved.getCaseName(), userId, accountEntities.size());
+                saved.getId(), saved.getCaseName(), userId, accountIdStrings.size());
 
         // DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
-        createIntegrationAccount(user, req, saved);
+        createIntegrationAccount(user, req.getAccountIds(), saved);
         createCaseBucket(userId, saved.getId(), bucketName);
 
         return new CaseCreateResponse(saved.getId());
     }
 
-    private void createIntegrationAccount(User user, CaseCreateRequest req, IncidentCase saved){
-        List<IntegrationAccount> accounts = req.getAccountIds().stream()
+    private void createIntegrationAccount(User user, List<String> accountIds, IncidentCase saved){
+        List<IntegrationAccount> accounts = accountIds.stream()
                 .map(accountIdString -> IntegrationAccount.builder()
                         .pk("USER#%d#CASE#%d".formatted(user.getId(), saved.getId()))
                         .sk("ACCOUNT#%s".formatted(accountIdString))
                         .roleArn("arn:aws:iam::%s:role/IRAutomationRole".formatted(accountIdString))
-                        .roleCheck(false)
+                        .roleCheck(true)
                         .accountId(accountIdString)
                         .userId(user.getId())
                         .caseId(saved.getId())
@@ -340,17 +322,10 @@ public class CaseService {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        // 4) 연관된 AccountId들의 참조 해제
-        List<AccountId> relatedAccounts = accountIdRepository.findByIncidentCaseId(caseId);
-        for (AccountId account : relatedAccounts) {
-            account.setIncidentCase(null);
-        }
-        accountIdRepository.saveAll(relatedAccounts);
-
-        // 5) 사례 삭제
+        // 4) 사례 삭제
         incidentCaseRepository.delete(incidentCase);
 
-        log.info("Case deleted successfully - caseId: {}, userId: {}", caseId, userId);
+        integrationAccountRepository.deleteByUserIdAndCaseId(userId, caseId);
 
         CaseBucket bucket = caseBucketRepository.findCaseBucketByUserIdAndCaseId(userId, caseId);
 
@@ -363,9 +338,7 @@ public class CaseService {
         return new CaseDeleteResponse(caseId);
     }
 
-    /**
-     * 단일 사례 상세 조회
-     */
+
     @Transactional(readOnly = true)
     public CaseDetailResponse getCaseDetail(Long userId, Long caseId) {
 
@@ -406,8 +379,8 @@ public class CaseService {
                 .caseName(incidentCase.getCaseName())
                 .caseDescription(incidentCase.getDescription())
                 .status(incidentCase.getStatus().name().toLowerCase()) // ACTIVE → "active"
-                .analystName(incidentCase.getUser().getUserName()) // ✅ 추가! (또는 getLoginId())
-                .accountIds(accountIds) // ✅ 추가!
+                .analystName(incidentCase.getUser().getUserName())
+                .accountIds(accountIds)
                 .build();
     }
 
