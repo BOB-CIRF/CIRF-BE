@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.Key;
 
 import java.util.List;
 
@@ -38,5 +39,51 @@ public class IntegrationAccountRepository {
 
     public void saveAll(List<IntegrationAccount> accounts) {
         accounts.forEach(this::save);
+    }
+
+    public void delete(String pk, String sk) {
+        try {
+            DynamoDbTable<IntegrationAccount> table = dynamoDbEnhancedClient.table(
+                    TABLE_NAME,
+                    TableSchema.fromBean(IntegrationAccount.class)
+            );
+
+            Key key = Key.builder()
+                    .partitionValue(pk)
+                    .sortValue(sk)
+                    .build();
+
+            table.deleteItem(key);
+
+            log.info("IntegrationAccount deleted from DynamoDB - PK: {}, SK: {}", pk, sk);
+
+        } catch (Exception e) {
+            log.error("Failed to delete IntegrationAccount from DynamoDB", e);
+            throw new RuntimeException("DynamoDB 삭제 실패", e);
+        }
+    }
+
+    public void deleteByUserIdAndCaseId(Long userId, Long caseId) {
+        String pk = String.format("USER#%d#CASE#%d", userId, caseId);
+        try {
+            DynamoDbTable<IntegrationAccount> table = dynamoDbEnhancedClient.table(
+                    TABLE_NAME,
+                    TableSchema.fromBean(IntegrationAccount.class)
+            );
+
+            table.query(r -> r.queryConditional(
+                    software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional.keyEqualTo(
+                            Key.builder().partitionValue(pk).build()
+                    )
+            )).items().forEach(item -> {
+                delete(item.getPk(), item.getSk());
+            });
+
+            log.info("All IntegrationAccounts deleted for PK: {}", pk);
+
+        } catch (Exception e) {
+            log.error("Failed to delete IntegrationAccounts by PK from DynamoDB", e);
+            throw new RuntimeException("DynamoDB 삭제 실패", e);
+        }
     }
 }

@@ -13,6 +13,7 @@ public enum ErrorMessage {
     // 400 Bad Request
     INVALID_REQUEST("잘못된 요청입니다."),
     INVALID_ACCOUNT_ID("존재하지 않는 accountId가 포함되어 있습니다."),
+    EXISTS_ACCOUNT_ID("다른 사례에 accountId가 이미 존재합니다."),
 
     // 403 Forbidden
     ACCESS_DENIED("잘못된 접근 권한입니다."),
