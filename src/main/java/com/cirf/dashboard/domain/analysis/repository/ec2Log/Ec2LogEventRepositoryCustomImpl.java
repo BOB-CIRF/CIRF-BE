@@ -7,6 +7,7 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.Ec2LogQueryRequest;
 import com.cirf.dashboard.domain.analysis.entity.Ec2LogEvent;
+import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import com.cirf.dashboard.domain.analysis.exception.ElasticsearchCommunicationException;
 import com.cirf.dashboard.domain.analysis.exception.ErrorMessage;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.SliceImpl;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import org.springframework.data.elasticsearch.core.query.Criteria;
+import org.springframework.data.elasticsearch.core.query.CriteriaQuery;
 import org.springframework.stereotype.Repository;
 
 import java.io.IOException;
@@ -22,12 +28,14 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Slf4j
 @Repository
 @RequiredArgsConstructor
 public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCustom {
 
+    private final ElasticsearchOperations operations;
     private final ElasticsearchClient esClient;
 
     @Override
@@ -289,5 +297,37 @@ public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCus
             log.error("Failed to serialize sort values", e);
             return null;
         }
+    }
+
+    @Override
+    public Optional<Ec2LogEvent> findByIdWithRouting(String tenantId, Long caseId, String id) {
+        try {
+            String routing = tenantId + "-" + caseId;
+
+            // Criteria로 검색 (get 대신 search 사용하여 라우팅 적용)
+            Criteria criteria = new Criteria("_id").is(id)
+                    .and(new Criteria("tenantId").is(tenantId))
+                    .and(new Criteria("caseId").is(caseId));
+
+            CriteriaQuery query = new CriteriaQuery(criteria);
+            query.setRoute(routing);
+
+            SearchHits<Ec2LogEvent> hits = operations.search(query, Ec2LogEvent.class, dsOfTenant(tenantId, caseId));
+
+            if (hits.hasSearchHits()) {
+                Ec2LogEvent event = hits.getSearchHit(0).getContent();
+                if (event.getId() == null) {
+                    event.setId(hits.getSearchHit(0).getId());
+                }
+                return Optional.of(event);
+            }
+            return Optional.empty();
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    private IndexCoordinates dsOfTenant(String tenantId, Long caseId) {
+        return IndexCoordinates.of("ec2-tenant-" + tenantId + "-" + caseId);
     }
 }

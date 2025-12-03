@@ -76,7 +76,7 @@ public class Ec2LogEvent {
     @Field(name = "s3.object.key", type = FieldType.Keyword)
     private String s3Key;
 
-    @Field(name = "event.original", type = FieldType.Text)
+    @Field(name = "message", type = FieldType.Text)
     private String raw;
 
     // Jackson이 nested aws.s3 객체를 파싱하기 위한 setter
