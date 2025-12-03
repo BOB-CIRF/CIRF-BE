@@ -1,7 +1,7 @@
 package com.cirf.dashboard.domain.analysis.repository;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import com.cirf.dashboard.domain.analysis.dto.request.LogQueryRequest;
+import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;
 import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import com.cirf.dashboard.domain.analysis.exception.ElasticsearchCommunicationException;
 import com.cirf.dashboard.domain.analysis.exception.ErrorMessage;
@@ -35,7 +35,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         return IndexCoordinates.of("logs-tenant-" + tenantId + "-" + caseId + "-default");
     }
 
-    public Page<LogEvent> searchByQuery(String tenantId, LogQueryRequest request) {
+    public Page<LogEvent> searchByQuery(String tenantId, AwsNativeLogQueryRequest request) {
         String indexName = "logs-tenant-" + tenantId + "-" + request.caseId() + "-default";
         String routing = tenantId + "|" + request.caseId();
 
@@ -74,7 +74,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
 
     private void addFilterConditions(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
                                      String tenantId,
-                                     LogQueryRequest request) {
+                                     AwsNativeLogQueryRequest request) {
         // 필수: tenantId, caseId
         boolBuilder.filter(f -> f.term(t -> t.field("tenantId").value(tenantId)));
         boolBuilder.filter(f -> f.term(t -> t.field("caseId").value(request.caseId().toString())));
@@ -101,7 +101,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
     }
 
     private void addTimeRangeFilter(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
-                                     LogQueryRequest request) {
+                                     AwsNativeLogQueryRequest request) {
         if (request.startTime() != null && request.endTime() != null) {
             Instant start = request.startTime().atZone(ZoneId.systemDefault()).toInstant();
             Instant end = request.endTime().atZone(ZoneId.systemDefault()).toInstant();
@@ -122,7 +122,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
     }
 
     private void addKeywordSearch(co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder boolBuilder,
-                                   LogQueryRequest request) {
+                                   AwsNativeLogQueryRequest request) {
         if (request.keyword() == null || request.keyword().isBlank()) {
             return;
         }
@@ -157,7 +157,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         ));
     }
 
-    private co.elastic.clients.elasticsearch._types.SortOptions determineSortOption(LogQueryRequest request) {
+    private co.elastic.clients.elasticsearch._types.SortOptions determineSortOption(AwsNativeLogQueryRequest request) {
         if (request.keyword() != null && !request.keyword().isBlank()) {
             return co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
                     .score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
@@ -169,7 +169,7 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
     }
 
     private Page<LogEvent> mapSearchResponse(SearchResponse<LogEvent> response,
-                                              LogQueryRequest request) {
+                                              AwsNativeLogQueryRequest request) {
         List<LogEvent> content = response.hits().hits().stream()
                 .map(hit -> {
                     LogEvent event = hit.source();

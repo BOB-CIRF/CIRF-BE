@@ -1,6 +1,6 @@
 package com.cirf.dashboard.domain.analysis.dto.response.lists;
 
-import com.cirf.dashboard.domain.analysis.dto.response.LogStashResponse;
+import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.PageableDto;
 import lombok.Builder;
 import org.springframework.data.domain.Page;
@@ -8,12 +8,12 @@ import org.springframework.data.domain.Page;
 import java.util.List;
 
 @Builder
-public record LogStashListResponse(
-        List<LogStashResponse> logs,
+public record AwsNativeLogListResponse(
+        List<AwsNativeLogResponse> logs,
         PageableDto pageable
 ) {
-    public static LogStashListResponse of(Page<LogStashResponse> page) {
-        return LogStashListResponse.builder()
+    public static AwsNativeLogListResponse of(Page<AwsNativeLogResponse> page) {
+        return AwsNativeLogListResponse.builder()
                 .logs(page.getContent())
                 .pageable(PageableDto.builder()
                         .pageNumber(page.getNumber())
