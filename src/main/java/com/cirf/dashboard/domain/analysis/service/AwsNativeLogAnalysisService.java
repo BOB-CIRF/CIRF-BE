@@ -6,7 +6,7 @@ import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogResponse;
 import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import com.cirf.dashboard.domain.analysis.exception.ErrorMessage;
 import com.cirf.dashboard.domain.analysis.exception.LogNotFoundException;
-import com.cirf.dashboard.domain.analysis.repository.LogEventRepository;
+import com.cirf.dashboard.domain.analysis.repository.awsNativeLog.LogEventRepository;
 import com.cirf.dashboard.domain.auth.entity.User;
 import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.auth.repository.UserRepository;

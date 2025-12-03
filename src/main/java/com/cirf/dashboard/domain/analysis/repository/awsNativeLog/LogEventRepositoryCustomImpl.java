@@ -1,4 +1,4 @@
-package com.cirf.dashboard.domain.analysis.repository;
+package com.cirf.dashboard.domain.analysis.repository.awsNativeLog;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;

@@ -1,9 +1,9 @@
 package com.cirf.dashboard.domain.analysis.dto.response.lists;
 
+import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.response.Ec2LogResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.PageableDto;
 import lombok.Builder;
-import org.springframework.data.domain.Slice;
 
 import java.util.List;
 
@@ -12,13 +12,17 @@ public record Ec2LogListResponse(
         List<Ec2LogResponse> logs,
         PageableDto pageable
 ) {
-    public static Ec2LogListResponse of(Slice<Ec2LogResponse> slice) {
+    public static Ec2LogListResponse of(SliceWithSort<Ec2LogResponse> sliceWithSort) {
         return Ec2LogListResponse.builder()
-                .logs(slice.getContent())
+                .logs(sliceWithSort.content())
                 .pageable(PageableDto.builder()
-                        .pageNumber(slice.getNumber())
-                        .pageSize(slice.getSize())
-                        .isLast(slice.isLast())
+                        .pageNumber(null)
+                        .pageSize(sliceWithSort.pageSize())
+                        .numberOfElements(null)
+                        .totalPages(null)
+                        .totalElements(sliceWithSort.totalElements() > 0 ? sliceWithSort.totalElements() : null)  // 첫 페이지만
+                        .isLast(!sliceWithSort.hasNext())
+                        .nextSearchAfter(sliceWithSort.lastSortValue())
                         .build())
                 .build();
     }

@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.analysis.controller;
 
+import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.Ec2LogQueryRequest;
 import com.cirf.dashboard.domain.analysis.dto.response.Ec2LogResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.lists.Ec2LogListResponse;
@@ -7,7 +8,6 @@ import com.cirf.dashboard.domain.analysis.service.Ec2LogAnalysisService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Slice;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +23,7 @@ public class Ec2LogAnalysisController {
             @RequestHeader("userId") long userId,
             @Valid Ec2LogQueryRequest request
     ){
-        Slice<Ec2LogResponse> response = ec2LogAnalysisService.queryEc2Log(userId, request.caseId(), request.accountId(), request.instanceId(), request);
+        SliceWithSort<Ec2LogResponse> response = ec2LogAnalysisService.queryEc2Log(userId, request);
         return new ApiResponse<>(HttpStatus.OK.value(), ResponseMessage.GET_LOGS_SUCCESS.getMessage(), Ec2LogListResponse.of(response));
     }
 
