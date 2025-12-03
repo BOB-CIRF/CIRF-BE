@@ -7,7 +7,6 @@ import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.Ec2LogQueryRequest;
 import com.cirf.dashboard.domain.analysis.entity.Ec2LogEvent;
-import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import com.cirf.dashboard.domain.analysis.exception.ElasticsearchCommunicationException;
 import com.cirf.dashboard.domain.analysis.exception.ErrorMessage;
 import lombok.RequiredArgsConstructor;
@@ -226,11 +225,6 @@ public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCus
         return SliceWithSort.of(slice, lastSortValue, totalElements);
     }
 
-    /**
-     * searchAfter 문자열을 파싱하여 FieldValue 리스트로 변환
-     * 예: "1733220000000_sort_id_123" -> [FieldValue(1733220000000), FieldValue(123)]
-     * 예: "4.567_sort_id_123" -> [FieldValue(4.567), FieldValue(123)]
-     */
     private List<FieldValue> parseSearchAfter(String searchAfter) {
         try {
             String[] parts = searchAfter.split("_sort_id_");
@@ -258,11 +252,7 @@ public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCus
         }
     }
 
-    /**
-     * sort 값들을 간결한 문자열로 직렬화
-     * 예: [FieldValue(1733220000000), FieldValue(123)] -> "1733220000000_sort_id_123"
-     * 예: [FieldValue(4.567), FieldValue(123)] -> "4.567_sort_id_123" (score 기반)
-     */
+
     private String serializeSortValues(List<FieldValue> sortValues) {
         try {
             if (sortValues.size() != 2) {

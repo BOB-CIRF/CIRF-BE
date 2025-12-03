@@ -8,8 +8,6 @@ import com.cirf.dashboard.domain.analysis.dto.response.lists.Ec2LogListResponse;
 import com.cirf.dashboard.domain.analysis.service.Ec2LogAnalysisService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
