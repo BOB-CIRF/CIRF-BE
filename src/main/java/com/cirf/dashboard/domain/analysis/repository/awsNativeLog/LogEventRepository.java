@@ -1,4 +1,4 @@
-package com.cirf.dashboard.domain.analysis.repository;
+package com.cirf.dashboard.domain.analysis.repository.awsNativeLog;
 
 import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;

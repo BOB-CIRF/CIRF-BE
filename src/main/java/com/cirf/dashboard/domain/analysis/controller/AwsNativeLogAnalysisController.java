@@ -1,10 +1,10 @@
 package com.cirf.dashboard.domain.analysis.controller;
 
-import com.cirf.dashboard.domain.analysis.dto.request.LogQueryRequest;
-import com.cirf.dashboard.domain.analysis.dto.response.LogRawDataResponse;
-import com.cirf.dashboard.domain.analysis.dto.response.LogStashResponse;
-import com.cirf.dashboard.domain.analysis.dto.response.lists.LogStashListResponse;
-import com.cirf.dashboard.domain.analysis.service.AnalysisService;
+import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;
+import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogRawDataResponse;
+import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogResponse;
+import com.cirf.dashboard.domain.analysis.dto.response.lists.AwsNativeLogListResponse;
+import com.cirf.dashboard.domain.analysis.service.AwsNativeLogAnalysisService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -22,31 +22,31 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/analysis")
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "spring.elasticsearch.enabled", havingValue = "true")
-public class AnalysisController {
+public class AwsNativeLogAnalysisController {
 
-    private final AnalysisService analysisService;
+    private final AwsNativeLogAnalysisService awsNativeLogAnalysisService;
 
     @GetMapping("/logs")
-    public ApiResponse<LogStashListResponse> queryLogs(
+    public ApiResponse<AwsNativeLogListResponse> queryLogs(
             @RequestHeader("userId") @NotNull Long userId,
-            @Valid LogQueryRequest request
+            @Valid AwsNativeLogQueryRequest request
     ) {
-        Page<LogStashResponse> logs = analysisService.queryLogs(userId, request);
+        Page<AwsNativeLogResponse> logs = awsNativeLogAnalysisService.queryLogs(userId, request);
 
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
                 ResponseMessage.GET_LOGS_SUCCESS.getMessage(),
-                LogStashListResponse.of(logs)
+                AwsNativeLogListResponse.of(logs)
         );
     }
 
     @GetMapping("/logs/{id}/raw")
-    public ApiResponse<LogRawDataResponse> getRawLogData(
+    public ApiResponse<AwsNativeLogRawDataResponse> getRawLogData(
             @RequestHeader("userId") @NotNull Long userId,
             @PathVariable String id,
             @RequestParam Long caseId
     ) {
-        LogRawDataResponse rawData = analysisService.getRawLogData(userId, caseId, id);
+        AwsNativeLogRawDataResponse rawData = awsNativeLogAnalysisService.getRawLogData(userId, caseId, id);
 
         return new ApiResponse<>(
                 HttpStatus.OK.value(),

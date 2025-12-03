@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 /**
  * Request DTO for querying LogStash logs from ElasticSearch
  */
-public record LogQueryRequest(
+public record AwsNativeLogQueryRequest(
         @NotNull(message = "caseId는 필수입니다.")
         Long caseId,
 

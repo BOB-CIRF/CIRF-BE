@@ -7,11 +7,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
-/**
- * Response DTO for LogStash log data
- */
 @Builder
-public record LogStashResponse(
+public record AwsNativeLogResponse(
         String id,
         String accountId,
         LocalDateTime time,
@@ -24,14 +21,14 @@ public record LogStashResponse(
         String outcome,
         String region
 ) {
-    public static LogStashResponse from(LogEvent event) {
+    public static AwsNativeLogResponse from(LogEvent event) {
         // Use timestamp field (which maps to @timestamp in ES) as the primary time source
         Instant instant = event.getTimestamp();
         LocalDateTime time = instant != null
                 ? LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
                 : null;
 
-        return LogStashResponse.builder()
+        return AwsNativeLogResponse.builder()
                 .id(event.getId())
                 .accountId(event.getAccountId())
                 .time(time)

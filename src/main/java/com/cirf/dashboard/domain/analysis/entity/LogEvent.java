@@ -13,10 +13,6 @@ import org.springframework.data.elasticsearch.annotations.FieldType;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * 데이터 스트림: logs-tenant-<tenantId>-default
- * 기본 템플릿 매핑에 맞춘 엔티티
- */
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor
 @Builder
