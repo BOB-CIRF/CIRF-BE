@@ -9,12 +9,12 @@ import java.util.Map;
  * Response DTO for raw log data
  */
 @Builder
-public record LogRawDataResponse(
+public record AwsNativeLogRawDataResponse(
         String id,
         Map<String, Object> rawData
 ) {
-    public static LogRawDataResponse from(LogEvent event) {
-        return LogRawDataResponse.builder()
+    public static AwsNativeLogRawDataResponse from(LogEvent event) {
+        return AwsNativeLogRawDataResponse.builder()
                 .id(event.getId())
                 .rawData(event.getEvent_data())
                 .build();
