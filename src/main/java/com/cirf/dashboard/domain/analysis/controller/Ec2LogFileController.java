@@ -2,7 +2,9 @@ package com.cirf.dashboard.domain.analysis.controller;
 
 import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.Ec2FileStatQueryRequest;
+import com.cirf.dashboard.domain.analysis.dto.request.Ec2RawFileRequest;
 import com.cirf.dashboard.domain.analysis.dto.response.Ec2FileStatResponse;
+import com.cirf.dashboard.domain.analysis.dto.response.Ec2RawFileResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.lists.Ec2FileStatListResponse;
 import com.cirf.dashboard.domain.analysis.service.Ec2FileAnalysisService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
@@ -31,6 +33,19 @@ public class Ec2LogFileController {
                 HttpStatus.OK.value(),
                 ResponseMessage.GET_LOGS_SUCCESS.getMessage(),
                 Ec2FileStatListResponse.of(response)
+        );
+    }
+
+    @GetMapping("/no-timestamp/raw")
+    public ApiResponse<Ec2RawFileResponse> getFileStatRaw(
+            @RequestHeader("userId") long userId,
+            @Valid Ec2RawFileRequest request
+    ){
+        Ec2RawFileResponse response = ec2FileAnalysisService.getRawFile(userId, request);
+        return new ApiResponse<>(
+                HttpStatus.OK.value(),
+                ResponseMessage.GET_RAW_LOG_SUCCESS.getMessage(),
+                response
         );
     }
 }
