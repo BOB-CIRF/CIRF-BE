@@ -12,7 +12,7 @@ public record Ec2RawFileRequest(
         String region,
         @NotBlank(message = "instanceId는 필수입니다.")
         String instanceId,
-        @NotBlank(message = "filePath는 필수입니다.")
-        String filePath
+        @NotBlank(message = "fileName 필수입니다.")
+        String fileName
 ) {
 }

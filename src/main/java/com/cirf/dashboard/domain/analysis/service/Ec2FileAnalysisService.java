@@ -6,12 +6,13 @@ import com.cirf.dashboard.domain.analysis.dto.request.Ec2RawFileRequest;
 import com.cirf.dashboard.domain.analysis.dto.response.Ec2FileStatResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.Ec2RawFileResponse;
 import com.cirf.dashboard.domain.analysis.entity.Ec2FileStat;
+import com.cirf.dashboard.domain.analysis.exception.ErrorMessage;
+import com.cirf.dashboard.domain.analysis.exception.FailedDecompressFileException;
 import com.cirf.dashboard.domain.analysis.repository.ec2File.Ec2FileStatRepository;
 import com.cirf.dashboard.domain.auth.entity.User;
 import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import com.cirf.dashboard.domain.cases.entity.CaseBucket;
-import com.cirf.dashboard.domain.cases.exception.ErrorMessage;
 import com.cirf.dashboard.domain.cases.exception.NotFoundBucketException;
 import com.cirf.dashboard.domain.cases.repository.CaseBucketRepository;
 import lombok.RequiredArgsConstructor;
@@ -115,12 +116,12 @@ public class Ec2FileAnalysisService {
         // 2. DDB에서 bucketName 조회
         CaseBucket caseBucket = caseBucketRepository.findCaseBucketByUserIdAndCaseId(userId, request.caseId());
         if (caseBucket == null) {
-            throw new NotFoundBucketException(ErrorMessage.BUCKET_NOT_FOUND);
+            throw new NotFoundBucketException(com.cirf.dashboard.domain.cases.exception.ErrorMessage.BUCKET_NOT_FOUND);
         }
         String bucketName = caseBucket.getBucketName();
 
         // 3. filePath를 파일명으로 변환 (var/log/syslog → var_log_syslog.json.gz)
-        String fileName = convertFilePathToFileName(request.filePath());
+        String fileName = convertFilePathToFileName(request.fileName());
 
         // 4. S3에서 객체 목록 조회
         String prefix = String.format("ec2/%s/%s/%s/",
@@ -157,10 +158,6 @@ public class Ec2FileAnalysisService {
                 .build();
     }
 
-    /**
-     * 파일 경로를 파일명으로 변환
-     * 예: var/log/syslog → var_log_syslog.json.gz
-     */
     private String convertFilePathToFileName(String filePath) {
         // 슬래시를 언더스코어로 변환
         String converted = filePath.replace("/", "_");
@@ -168,10 +165,6 @@ public class Ec2FileAnalysisService {
         return converted + ".json.gz";
     }
 
-    /**
-     * S3 객체 키에서 타임스탬프 추출
-     * 예: ec2/{accountId}/{region}/{instanceId}/{timestamp:20251204T045831Z}/...
-     */
     private String extractTimestamp(String key) {
         // 타임스탬프 패턴: 20251204T045831Z 형식
         Pattern pattern = Pattern.compile("/(\\d{8}T\\d{6}Z)/");
@@ -182,9 +175,6 @@ public class Ec2FileAnalysisService {
         throw new IllegalArgumentException("타임스탬프를 추출할 수 없습니다: " + key);
     }
 
-    /**
-     * S3에서 .gz 파일을 다운로드하고 압축 해제하여 문자열로 반환
-     */
     private String downloadAndDecompressGzipFile(String bucketName, String key) {
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
@@ -203,7 +193,7 @@ public class Ec2FileAnalysisService {
             }
         } catch (Exception e) {
             log.error("Failed to download and decompress file: {}", key, e);
-            throw new RuntimeException("파일 다운로드 및 압축 해제에 실패했습니다.", e);
+            throw new FailedDecompressFileException(ErrorMessage.FAILED_DECOMPRESS);
         }
     }
 }
