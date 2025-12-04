@@ -139,42 +139,75 @@ public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCus
         }
 
         String keyword = request.keyword();
-        String wildcardPattern = "*" + keyword.toLowerCase(Locale.ROOT) + "*";
-        log.debug("Searching with keyword: {}, wildcard: {}", keyword, wildcardPattern);
 
-        // 검색 대상 필드 목록 (.text 서브필드 사용)
-        List<String> searchFields = List.of(
-                "event.action.text", "event.category.text", "event.outcome.text",
-                "@name.text", "account.text", "instance_id.text", "region.text"
-        );
+        // 파일 경로 형태(/var/log/btmp)인지 확인
+        boolean isFilePath = keyword.startsWith("/");
 
-        boolBuilder.must(m -> m.bool(b -> b
-                // 1. Multi-match: Best Fields (퍼지 검색) - 메인 검색
-                .should(s -> s.multiMatch(mm -> mm
-                        .query(keyword)
-                        .fields(searchFields)
-                        .type(co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType.BestFields)
-                        .fuzziness("AUTO")
-                ))
-                // 2. Wildcard: 부분 문자열 (핵심 필드만, 대소문자 무시)
-                .should(s -> s.wildcard(w -> w.field("event.action").value(wildcardPattern).caseInsensitive(true)))
-                .should(s -> s.wildcard(w -> w.field("event.category").value(wildcardPattern).caseInsensitive(true)))
-                .should(s -> s.wildcard(w -> w.field("@name").value(wildcardPattern).caseInsensitive(true)))
-                .minimumShouldMatch("1")
-        ));
+        if (isFilePath) {
+            // 파일 경로 검색: /var/log/btmp -> var_log_btmp 변환 후 정확한 매칭
+            String normalizedFileName = keyword.substring(1).replace("/", "_");
+            String fileWildcardPattern = "*" + normalizedFileName.toLowerCase(Locale.ROOT) + "*";
+            log.debug("File path search: {} -> {}, pattern: {}", keyword, normalizedFileName, fileWildcardPattern);
+
+            // @name 필드에 대해서만 wildcard 검색 (정확한 파일명 매칭)
+            boolBuilder.must(m -> m.wildcard(w -> w
+                    .field("@name")
+                    .value(fileWildcardPattern)
+                    .caseInsensitive(true)
+            ));
+        } else {
+            // 일반 키워드 검색: fuzzy + wildcard
+            final String wildcardPattern = "*" + keyword.toLowerCase(Locale.ROOT) + "*";
+            log.debug("General keyword search: {}, wildcard: {}", keyword, wildcardPattern);
+
+            // 검색 대상 필드 목록 (.text 서브필드 사용)
+            List<String> searchFields = List.of(
+                    "event.action.text", "event.category.text", "event.outcome.text",
+                    "@name.text", "account.text", "instance_id.text", "region.text"
+            );
+
+            boolBuilder.must(m -> m.bool(b -> b
+                    // 1. Multi-match: Best Fields (퍼지 검색) - 메인 검색
+                    .should(s -> s.multiMatch(mm -> mm
+                            .query(keyword)
+                            .fields(searchFields)
+                            .type(co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType.BestFields)
+                            .fuzziness("2")
+                            .prefixLength(0)
+                    ))
+                    // 2. Wildcard: 부분 문자열 (핵심 필드만, 대소문자 무시)
+                    .should(s -> s.wildcard(w -> w.field("event.action").value(wildcardPattern).caseInsensitive(true)))
+                    .should(s -> s.wildcard(w -> w.field("event.category").value(wildcardPattern).caseInsensitive(true)))
+                    .should(s -> s.wildcard(w -> w.field("@name").value(wildcardPattern).caseInsensitive(true)))
+                    .minimumShouldMatch("1")
+            ));
+        }
     }
 
     private List<co.elastic.clients.elasticsearch._types.SortOptions> determineSortOptions(Ec2LogQueryRequest request) {
         // tie-breaker로 _doc 추가하여 안정적인 정렬 보장 (_id는 정렬 불가)
         if (request.keyword() != null && !request.keyword().isBlank()) {
-            return List.of(
-                    co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
-                            .score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
-                    ),
-                    co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
-                            .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
-                    )
-            );
+            // 파일 경로 검색(/로 시작)은 timestamp로 정렬, 일반 키워드는 score로 정렬
+            boolean isFilePath = request.keyword().startsWith("/");
+            if (isFilePath) {
+                return List.of(
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .field(f -> f.field("@timestamp").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
+                        ),
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
+                        )
+                );
+            } else {
+                return List.of(
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
+                        ),
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
+                        )
+                );
+            }
         }
         return List.of(
                 co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
@@ -292,27 +325,62 @@ public class Ec2LogEventRepositoryCustomImpl implements Ec2LogEventRepositoryCus
     @Override
     public Optional<Ec2LogEvent> findByIdWithRouting(String tenantId, Long caseId, String id) {
         try {
+            String indexName = "ec2-tenant-" + tenantId + "-" + caseId;
             String routing = tenantId + "-" + caseId;
 
-            // Criteria로 검색 (get 대신 search 사용하여 라우팅 적용)
-            Criteria criteria = new Criteria("_id").is(id)
-                    .and(new Criteria("tenantId").is(tenantId))
-                    .and(new Criteria("caseId").is(caseId));
+            // ElasticsearchClient를 직접 사용하여 문서 조회
+            SearchResponse<Ec2LogEvent> response = esClient.search(s -> s
+                    .index(indexName)
+                    .query(q -> q.term(t -> t.field("_id").value(id)))
+                    .routing(routing)
+                    .size(1),
+                    Ec2LogEvent.class
+            );
 
-            CriteriaQuery query = new CriteriaQuery(criteria);
-            query.setRoute(routing);
+            if (response.hits().hits().isEmpty()) {
+                return Optional.empty();
+            }
 
-            SearchHits<Ec2LogEvent> hits = operations.search(query, Ec2LogEvent.class, dsOfTenant(tenantId, caseId));
+            Hit<Ec2LogEvent> hit = response.hits().hits().get(0);
+            Ec2LogEvent event = hit.source();
 
-            if (hits.hasSearchHits()) {
-                Ec2LogEvent event = hits.getSearchHit(0).getContent();
+            if (event != null) {
                 if (event.getId() == null) {
-                    event.setId(hits.getSearchHit(0).getId());
+                    event.setId(hit.id());
                 }
+
+                // event.original을 수동으로 추출
+                if (event.getRaw() == null && hit.source() != null) {
+                    // _source에서 event.original 직접 추출 시도
+                    try {
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> sourceMap =
+                            (java.util.Map<String, Object>) esClient.search(s -> s
+                                .index(indexName)
+                                .query(q -> q.term(t -> t.field("_id").value(id)))
+                                .routing(routing)
+                                .size(1),
+                                java.util.Map.class
+                            ).hits().hits().get(0).source();
+
+                        if (sourceMap != null && sourceMap.containsKey("event")) {
+                            @SuppressWarnings("unchecked")
+                            java.util.Map<String, Object> eventMap =
+                                (java.util.Map<String, Object>) sourceMap.get("event");
+                            if (eventMap != null && eventMap.containsKey("original")) {
+                                event.setRaw((String) eventMap.get("original"));
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to extract event.original manually", e);
+                    }
+                }
+
                 return Optional.of(event);
             }
             return Optional.empty();
         } catch (Exception e) {
+            log.error("Failed to find document by id with routing", e);
             return Optional.empty();
         }
     }
