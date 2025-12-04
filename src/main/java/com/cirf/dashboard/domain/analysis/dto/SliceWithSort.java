@@ -8,6 +8,7 @@ import java.util.List;
 @Builder
 public record SliceWithSort<T>(
         List<T> content,
+        int pageNumber,
         int pageSize,
         boolean hasNext,
         String lastSortValue,  // 예: "1733220000000_sort_id_123"
@@ -16,6 +17,7 @@ public record SliceWithSort<T>(
     public static <T> SliceWithSort<T> of(Slice<T> slice, String lastSortValue, long totalElements) {
         return SliceWithSort.<T>builder()
                 .content(slice.getContent())
+                .pageNumber(slice.getNumber())
                 .pageSize(slice.getSize())
                 .hasNext(slice.hasNext())
                 .lastSortValue(lastSortValue)
