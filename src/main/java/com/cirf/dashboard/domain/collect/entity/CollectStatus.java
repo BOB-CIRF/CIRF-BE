@@ -18,9 +18,12 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortK
 @DynamoDbBean
 public class CollectStatus {
 
-    private String pk;              // Partition Key: TENANT#{tenantId}#CASE#{caseId}
-    private String sk;              // Sort Key: TIMESTAMP#{utc.now()}
+    private String pk;              // Partition Key: PROGRESS#{progressId}
+    private String sk;              // Sort Key: TENANT#{tenantId}#CASE#{caseId}
 
+    private Long progressId;        // 진행도 ID (카운터)
+    private Long tenantId;          // 테넌트 ID
+    private Long caseId;            // 케이스 ID
     private Integer completed;      // 완료된 작업 수
     private Integer pending;        // 대기 중인 작업 수
     private Integer process;        // 진행 중인 작업 수
@@ -63,6 +66,21 @@ public class CollectStatus {
     @DynamoDbAttribute("totalJob")
     public Integer getTotalJob() {
         return totalJob;
+    }
+
+    @DynamoDbAttribute("progressId")
+    public Long getProgressId() {
+        return progressId;
+    }
+
+    @DynamoDbAttribute("tenantId")
+    public Long getTenantId() {
+        return tenantId;
+    }
+
+    @DynamoDbAttribute("caseId")
+    public Long getCaseId() {
+        return caseId;
     }
 
     @DynamoDbAttribute("updatedAt")

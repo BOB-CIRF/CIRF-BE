@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.collect.controller;
 
+import com.cirf.dashboard.domain.collect.dto.response.ProgressCreateResponse;
 import com.cirf.dashboard.domain.collect.dto.response.ProgressResponse;
 import com.cirf.dashboard.domain.collect.service.ProgressCacheService;
 import com.cirf.dashboard.domain.collect.service.ProgressService;
@@ -22,15 +23,15 @@ public class ProgressController {
     private final ProgressService progressService;
 
     @PostMapping("/progress")
-    public ApiResponse<String> saveCollectProgressStatus(
+    public ApiResponse<ProgressCreateResponse> saveCollectProgressStatus(
             @RequestHeader("userId") long userId,
             @RequestParam("caseId") long caseId
     ){
-        progressService.saveCollectProgress(userId, caseId);
+        ProgressCreateResponse progressId = progressService.saveCollectProgress(userId, caseId);
         return new ApiResponse<>(
                 HttpStatus.OK.value(),
                 ResponseMessage.SAVE_COLLECT_PROGRESS_SUCCESS.getMessage(),
-                null
+                progressId
         );
     }
 
