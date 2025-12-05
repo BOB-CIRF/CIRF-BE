@@ -2,6 +2,7 @@ package com.cirf.dashboard.domain.collect.controller;
 
 import com.cirf.dashboard.domain.collect.dto.response.ProgressResponse;
 import com.cirf.dashboard.domain.collect.service.ProgressCacheService;
+import com.cirf.dashboard.domain.collect.service.ProgressService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,20 @@ import java.util.Optional;
 public class ProgressController {
 
     private final ProgressCacheService progressCacheService;
+    private final ProgressService progressService;
+
+    @PostMapping("/progress")
+    public ApiResponse<String> saveCollectProgressStatus(
+            @RequestHeader("userId") long userId,
+            @RequestParam("caseId") long caseId
+    ){
+        progressService.saveCollectProgress(userId, caseId);
+        return new ApiResponse<>(
+                HttpStatus.OK.value(),
+                ResponseMessage.SAVE_COLLECT_PROGRESS_SUCCESS.getMessage(),
+                null
+        );
+    }
 
     @GetMapping("/{collectId}/progress")
     public DeferredResult<ApiResponse<ProgressResponse>> getProgress(
