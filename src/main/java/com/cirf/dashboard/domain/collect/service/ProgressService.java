@@ -22,7 +22,6 @@ import java.util.List;
 public class ProgressService {
 
     private final UserRepository userRepository;
-    private final CollectJobRepository collectJobRepository;
     private final CollectStatusRepository collectStatusRepository;
 
     private static final DateTimeFormatter UTC_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -47,7 +46,7 @@ public class ProgressService {
         // CollectStatus 생성
         CollectStatus collectStatus = CollectStatus.builder()
                 .pk(String.format("PROGRESS#%d", progressId))
-                .sk(String.format("TENANT#%d#CASE#%d", tenantId, caseId))
+                .sk("STATUS")
                 .progressId(progressId)
                 .tenantId(tenantId)
                 .caseId(caseId)

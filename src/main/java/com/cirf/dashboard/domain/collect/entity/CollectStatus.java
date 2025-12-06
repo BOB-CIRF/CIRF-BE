@@ -19,7 +19,7 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSortK
 public class CollectStatus {
 
     private String pk;              // Partition Key: PROGRESS#{progressId}
-    private String sk;              // Sort Key: TENANT#{tenantId}#CASE#{caseId}
+    private String sk;              // STATUS
 
     private Long progressId;        // 진행도 ID (카운터)
     private Long tenantId;          // 테넌트 ID
