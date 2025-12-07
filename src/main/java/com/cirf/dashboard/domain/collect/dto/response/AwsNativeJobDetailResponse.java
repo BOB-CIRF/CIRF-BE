@@ -4,7 +4,7 @@ import com.cirf.dashboard.domain.collect.entity.CollectJob;
 import lombok.Builder;
 
 @Builder
-public record JobDetailResponse(
+public record AwsNativeJobDetailResponse(
         String jobId,
         String logType,
         String dt,
@@ -13,10 +13,10 @@ public record JobDetailResponse(
         String status,
         String description
 ) {
-    public static JobDetailResponse from(CollectJob job) {
+    public static AwsNativeJobDetailResponse from(CollectJob job) {
         String description = createDescription(job.getDt(), job.getStatus());
 
-        return JobDetailResponse.builder()
+        return AwsNativeJobDetailResponse.builder()
                 .jobId(job.getJobId())
                 .logType(job.getLogType())
                 .dt(job.getDt())

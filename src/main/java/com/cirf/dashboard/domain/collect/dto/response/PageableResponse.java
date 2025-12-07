@@ -1,6 +1,7 @@
 package com.cirf.dashboard.domain.collect.dto.response;
 
 import lombok.Builder;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Slice;
 
 @Builder
