@@ -1,7 +1,9 @@
 package com.cirf.dashboard.domain.collect.controller;
 
-import com.cirf.dashboard.domain.collect.dto.response.JobDetailResponse;
-import com.cirf.dashboard.domain.collect.dto.response.JobListResponse;
+import com.cirf.dashboard.domain.collect.dto.response.AwsNativeJobDetailResponse;
+import com.cirf.dashboard.domain.collect.dto.response.Ec2JobResponse;
+import com.cirf.dashboard.domain.collect.dto.response.list.AwsNativeJobListResponse;
+import com.cirf.dashboard.domain.collect.dto.response.list.Ec2JobListResponse;
 import com.cirf.dashboard.domain.collect.service.CollectJobService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.constraints.NotNull;
@@ -20,7 +22,7 @@ public class JobsController {
     private final CollectJobService collectJobService;
 
     @GetMapping("/{collectId}/jobs")
-    public ApiResponse<JobListResponse> getJobs(
+    public ApiResponse<AwsNativeJobListResponse> getJobs(
             @RequestHeader("userId") @NotNull Long userId,
             @PathVariable Integer collectId,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
@@ -28,8 +30,22 @@ public class JobsController {
     ) {
         log.info("Get jobs request - collectId: {}, page: {}, size: {}", collectId, pageNumber, pageSize);
 
-        Slice<JobDetailResponse> response = collectJobService.getJobDetail(userId, collectId, pageNumber, pageSize);
+        Slice<AwsNativeJobDetailResponse> response = collectJobService.getJobDetail(userId, collectId, pageNumber, pageSize);
 
-        return new ApiResponse<>(HttpStatus.OK.value(), ResponseMessage.GET_COLLECT_LIST_SUCCESS.getMessage(), JobListResponse.of(response));
+        return new ApiResponse<>(HttpStatus.OK.value(), ResponseMessage.GET_COLLECT_LIST_SUCCESS.getMessage(), AwsNativeJobListResponse.of(response));
+    }
+
+    @GetMapping("/ec2/{collectId}/jobs")
+    public ApiResponse<Ec2JobListResponse> getJobDetail(
+            @RequestHeader("userId") @NotNull Long userId,
+            @PathVariable Integer collectId,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "20") int pageSize
+    ){
+        log.info("Get jobs request - collectId: {}, page: {}, size: {}", collectId, pageNumber, pageSize);
+
+        Slice<Ec2JobResponse> response = collectJobService.getEc2JobDetail(userId, collectId, pageNumber, pageSize);
+
+        return new ApiResponse<>(HttpStatus.OK.value(), ResponseMessage.GET_COLLECT_LIST_SUCCESS.getMessage(), Ec2JobListResponse.of(response));
     }
 }
