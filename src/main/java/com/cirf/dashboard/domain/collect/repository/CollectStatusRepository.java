@@ -12,6 +12,8 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import software.amazon.awssdk.enhanced.dynamodb.Key;
 
 @Slf4j
 @Repository
@@ -24,9 +26,6 @@ public class CollectStatusRepository {
     private static final String COUNTER_PK = "COUNTER";
     private static final String COUNTER_SK = "PROGRESS_ID";
 
-    /**
-     * progressId 카운터를 증가시키고 새로운 progressId를 반환
-     */
     public Long getNextProgressId() {
         try {
             Map<String, AttributeValue> key = new HashMap<>();
@@ -73,6 +72,39 @@ public class CollectStatusRepository {
         } catch (Exception e) {
             log.error("Failed to save CollectStatus to DynamoDB", e);
             throw new RuntimeException("DynamoDB 저장 실패", e);
+        }
+    }
+
+
+    public Optional<CollectStatus> findByProgressId(Long progressId) {
+        try {
+            DynamoDbTable<CollectStatus> table = dynamoDbEnhancedClient.table(
+                    COLLECT_TABLE_NAME,
+                    TableSchema.fromBean(CollectStatus.class)
+            );
+
+            String pk = String.format("PROGRESS#%d", progressId);
+            String sk = "STATUS";
+
+            Key key = Key.builder()
+                    .partitionValue(pk)
+                    .sortValue(sk)
+                    .build();
+
+            CollectStatus status = table.getItem(key);
+
+            if (status != null) {
+                log.debug("CollectStatus found - progressId: {}, totalJob: {}, completed: {}",
+                        progressId, status.getTotalJob(), status.getCompleted());
+            } else {
+                log.debug("CollectStatus not found - progressId: {}", progressId);
+            }
+
+            return Optional.ofNullable(status);
+
+        } catch (Exception e) {
+            log.error("Failed to find CollectStatus by progressId: {}", progressId, e);
+            throw new RuntimeException("DynamoDB 조회 실패", e);
         }
     }
 }

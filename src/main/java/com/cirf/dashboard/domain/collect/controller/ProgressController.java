@@ -4,12 +4,15 @@ import com.cirf.dashboard.domain.collect.dto.response.ProgressCreateResponse;
 import com.cirf.dashboard.domain.collect.dto.response.ProgressResponse;
 import com.cirf.dashboard.domain.collect.service.ProgressCacheService;
 import com.cirf.dashboard.domain.collect.service.ProgressService;
+import com.cirf.dashboard.domain.collect.service.ProgressSseService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.async.DeferredResult;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Optional;
 
@@ -21,6 +24,7 @@ public class ProgressController {
 
     private final ProgressCacheService progressCacheService;
     private final ProgressService progressService;
+    private final ProgressSseService progressSseService;
 
     @PostMapping("/progress")
     public ApiResponse<ProgressCreateResponse> saveCollectProgressStatus(
@@ -93,5 +97,27 @@ public class ProgressController {
         }
 
         return deferredResult;
+    }
+
+
+    @GetMapping(value = "/progress/{progressId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamProgress(
+            @RequestHeader("userId") long userId,
+            @PathVariable Long progressId
+    ) {
+        log.info("SSE stream request - userId: {}, progressId: {}", userId, progressId);
+
+        // 1. 유저 권한 검증
+        progressSseService.validateUserAccess(userId, progressId);
+
+        // 2. SSE Emitter 생성 (타임아웃: 5분)
+        SseEmitter emitter = progressSseService.createEmitter(progressId);
+
+        // 3. 현재 상태 즉시 전송
+        progressSseService.sendCurrentStatus(progressId, emitter);
+
+        log.info("SSE stream established - userId: {}, progressId: {}", userId, progressId);
+
+        return emitter;
     }
 }

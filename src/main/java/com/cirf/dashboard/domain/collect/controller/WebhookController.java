@@ -3,6 +3,7 @@ package com.cirf.dashboard.domain.collect.controller;
 import com.cirf.dashboard.domain.collect.dto.ProgressEvent;
 import com.cirf.dashboard.domain.collect.dto.request.CollectStatusWebhookRequest;
 import com.cirf.dashboard.domain.collect.dto.request.WebhookRequest;
+import com.cirf.dashboard.domain.collect.service.CollectStatusService;
 import com.cirf.dashboard.domain.collect.service.ProgressCacheService;
 import com.cirf.dashboard.global.common.dto.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class WebhookController {
 
     private final ProgressCacheService progressCacheService;
+    private final CollectStatusService collectStatusService;
 
     @PostMapping("/progress")
     public ApiResponse<String> post(
@@ -34,10 +36,15 @@ public class WebhookController {
     }
 
     @PostMapping("/collect-status")
-    public ApiResponse<String> post(
+    public ApiResponse<String> postCollectStatus(
             @RequestBody CollectStatusWebhookRequest request
     ){
-        System.out.println("Webhook received: " + request.toString());
+        log.info("Collect status webhook received: progressId={}, eventType={}, statusCounts={}",
+                request.progressId(), request.eventType(), request.statusCounts());
+
+        // CollectStatus 업데이트 및 SSE 브로드캐스트
+        collectStatusService.updateStatus(request);
+
         return new ApiResponse<>(HttpStatus.OK.value(), "success", null);
     }
 }
