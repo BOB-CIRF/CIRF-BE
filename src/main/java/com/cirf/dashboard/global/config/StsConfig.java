@@ -10,7 +10,7 @@ import software.amazon.awssdk.services.sts.StsClient;
 @Configuration
 public class StsConfig {
 
-    @Value("${cloud.aws.region.static}")
+    @Value("${aws.region}")
     private String region;
 
     @Bean
