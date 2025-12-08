@@ -37,6 +37,7 @@ dependencies {
 	implementation("software.amazon.awssdk:s3")
 	implementation("software.amazon.awssdk:sts")
 	implementation("software.amazon.awssdk:sqs")
+	implementation("software.amazon.awssdk:ses")
 
 	runtimeOnly 'com.mysql:mysql-connector-j'
 
@@ -47,9 +48,12 @@ dependencies {
 
 	// ElasticSearch
 	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
-
-	// Caffeine Cache
 	implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+
+
+	// AWS SES
+	implementation 'software.amazon.awssdk:ses:2.20.0'
+	implementation("software.amazon.awssdk:cloudformation")
 
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -57,6 +61,3 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.named('test') {
-	useJUnitPlatform()
-}

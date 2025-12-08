@@ -19,9 +19,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import com.cirf.dashboard.domain.cases.dto.response.OnboardingInfoResponse;
+// 2. Import 추가
+import com.cirf.dashboard.domain.cases.entity.DeploymentStatus;
+import com.cirf.dashboard.domain.cases.dto.response.DeploymentStatusResponse;
+import com.cirf.dashboard.domain.cases.repository.DeploymentStatusRepository;
 
 import com.cirf.dashboard.domain.cases.exception.AccessDeniedException;
 import com.cirf.dashboard.domain.cases.exception.ErrorMessage;
@@ -33,6 +38,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.cirf.dashboard.domain.cases.repository.IntegrationAccountRepository;
+import com.cirf.dashboard.domain.cases.dto.response.StackInfoResponse;
 
 import java.util.List;
 
@@ -49,6 +55,9 @@ public class CaseService {
 
     private final S3ConfigService s3ConfigService;
     private final S3EventService s3EventService;
+    private final CloudFormationTemplateService cloudFormationTemplateService;
+    private final EmailService emailService;
+    private final CloudFormationStackService cloudFormationStackService;  // 의존성 주입 추가
 
     @Value("${aws.sqs.shared-queue-arn}")
     private String sharedQueueArn;
@@ -184,7 +193,6 @@ public class CaseService {
         return new CaseUpdateResponse(caseId);
     }
 
-
     @Transactional
     public CaseCreateResponse createCase(Long userId, CaseCreateRequest req) {
 
@@ -255,12 +263,36 @@ public class CaseService {
             }
         }
 
-        log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}",
-                saved.getId(), saved.getCaseName(), userId, accountIdStrings.size());
+        // 6) CloudFormation 템플릿 생성 및 S3 업로드 (각 accountId별로)
+        List<String> templateUrls = new ArrayList<>();
+        if (bucketName != null) {
+            for (String accountId : accountIdStrings) {
+                try {
+                    String templateUrl = cloudFormationTemplateService.createAndUploadTemplate(
+                            saved.getId(),
+                            accountId,
+                            bucketName
+                    );
+                    templateUrls.add(templateUrl);
+                    log.info("CloudFormation template created for case {} and account {}: {}",
+                            saved.getId(), accountId, templateUrl);
+                } catch (Exception e) {
+                    log.error("Failed to create CloudFormation template for case {} and account {}: {}",
+                            saved.getId(), accountId, e.getMessage());
+                }
+            }
+        } else {
+            log.warn("Skipping CloudFormation template creation - S3 bucket was not created for case {}",
+                    saved.getId());
+        }
 
-        // DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
+        log.info("Case created successfully - caseId: {}, caseName: {}, userId: {}, AccountIds: {}, CloudFormation templates: {}",
+                saved.getId(), saved.getCaseName(), userId, accountIdStrings.size(), templateUrls.size());
+
+        // 7) DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
         createIntegrationAccount(user, req.getAccountIds(), saved);
         createCaseBucket(userId, saved.getId(), bucketName);
+        initializeDeploymentStatus(saved.getId(), req.getAccountIds());
 
         return new CaseCreateResponse(saved.getId());
     }
@@ -338,6 +370,192 @@ public class CaseService {
         return new CaseDeleteResponse(caseId);
     }
 
+    /**
+     * 온보딩 정보 조회
+     * - CloudFormation 템플릿 내용
+     * - S3 Presigned URL
+     * - CloudFormation 런치 링크
+     */
+    public OnboardingInfoResponse getOnboardingInfo(Long caseId, String accountId) {
+        log.info("Fetching onboarding info for caseId: {}, accountId: {}", caseId, accountId);
+
+        // 1. 사례 존재 여부 확인
+        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사례입니다: " + caseId));
+
+        // 2. 계정 ID 확인
+        boolean accountExists = incidentCase.getAccountIdList().stream()
+                .anyMatch(acc -> acc.getAccountId().equals(accountId));
+
+        if (!accountExists) {
+            throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
+        }
+
+        // 3. S3 버킷명 조회 (DynamoDB에서 실제 값 가져오기!) ✅
+        CaseBucket bucket = caseBucketRepository.findCaseBucketByUserIdAndCaseId(
+                incidentCase.getUser().getId(), caseId);
+
+        if (bucket == null) {
+            throw new IllegalArgumentException("사례에 연결된 S3 버킷이 없습니다: " + caseId);
+        }
+
+        String bucketName = bucket.getBucketName();  // ✅ 실제 버킷명 사용!
+        log.info("Found bucket for case {}: {}", caseId, bucketName);
+
+        // 4. S3 키 생성
+        String s3Key = String.format("cloudformation-templates/case-%d/account-%s/template.yml",
+                caseId, accountId);
+
+        // 5. Presigned URL 생성 (7일 유효)
+        int expirationMinutes = 60 * 24 * 7; // 7일
+        String presignedUrl = cloudFormationTemplateService.generatePresignedUrl(
+                bucketName, s3Key, expirationMinutes
+        );
+
+        // 6. CloudFormation 런치 링크 생성
+        String launchUrl = cloudFormationTemplateService.generateCloudFormationLaunchUrl(
+                presignedUrl, caseId, accountId
+        );
+
+        // 7. 템플릿 내용 가져오기
+        String templateContent = cloudFormationTemplateService.getTemplateContent(caseId, accountId);
+
+        return OnboardingInfoResponse.builder()
+                .templateContent(templateContent)
+                .presignedUrl(presignedUrl)
+                .launchUrl(launchUrl)
+                .accountId(accountId)
+                .caseId(caseId)
+                .expirationMinutes(expirationMinutes)
+                .build();
+    }
+
+    // CaseService.java에 추가할 메서드
+
+
+    /**
+     * 온보딩 정보를 이메일로 전송
+     */
+    public void sendOnboardingEmail(Long caseId, String accountId, List<String> emails) {
+        log.info("Sending onboarding email for caseId: {}, accountId: {}, to: {}",
+                caseId, accountId, emails);
+
+        // 온보딩 정보 조회
+        OnboardingInfoResponse onboardingInfo = getOnboardingInfo(caseId, accountId);
+
+        // 이메일 전송
+        emailService.sendOnboardingEmail(
+                emails,
+                caseId,
+                accountId,
+                onboardingInfo.getLaunchUrl(),
+                onboardingInfo.getPresignedUrl(),
+                onboardingInfo.getTemplateContent()
+        );
+
+        log.info("Onboarding email sent successfully to {}", emails.size());
+    }
+
+
+    /**
+     * CloudFormation Stack 정보 조회
+     */
+    public StackInfoResponse getStackInfo(Long caseId, String accountId) {
+        log.info("Getting stack info for caseId: {}, accountId: {}", caseId, accountId);
+
+        // 1. 사례 존재 여부 확인
+        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사례입니다: " + caseId));
+
+        // 2. 계정 ID 확인
+        boolean accountExists = incidentCase.getAccountIdList().stream()
+                .anyMatch(acc -> acc.getAccountId().equals(accountId));
+
+        if (!accountExists) {
+            throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
+        }
+
+        // 3. CloudFormation Stack 정보 조회
+        return cloudFormationStackService.getStackInfo(caseId, accountId);
+    }
+
+    // ============================================
+// CaseService.java에 추가할 내용
+// ============================================
+
+    // 1. 의존성 주입 추가 (필드)
+    private final DeploymentStatusRepository deploymentStatusRepository;
+
+
+// 3. 메서드들 추가
+
+    /**
+     * 사례 생성 시 배포 상태 초기화
+     * createCase() 메서드 내부에서 호출
+     */
+    private void initializeDeploymentStatus(Long caseId, List<String> accountIds) {
+        for (String accountId : accountIds) {
+            String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
+            String roleArn = String.format("arn:aws:iam::%s:role/IRAutomationRole", accountId);
+
+            DeploymentStatus deploymentStatus = DeploymentStatus.builder()
+                    .caseId(caseId)
+                    .accountId(accountId)
+                    .stackName(stackName)
+                    .stackStatus(DeploymentStatus.StackStatus.NOT_DEPLOYED)
+                    .statusReason("CloudFormation 템플릿이 생성되었습니다. launchUrl을 통해 배포를 시작하세요.")
+                    .roleArn(roleArn)
+                    .build();
+
+            deploymentStatusRepository.save(deploymentStatus);
+            log.info("Deployment status initialized for case {} and account {}", caseId, accountId);
+        }
+    }
+
+    /**
+     * 배포 상태 조회
+     */
+    public DeploymentStatusResponse getDeploymentStatus(Long caseId, String accountId) {
+        log.info("Getting deployment status for caseId: {}, accountId: {}", caseId, accountId);
+
+        // 1. 사례 존재 여부 확인
+        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사례입니다: " + caseId));
+
+        // 2. 계정 ID 확인
+        boolean accountExists = incidentCase.getAccountIdList().stream()
+                .anyMatch(acc -> acc.getAccountId().equals(accountId));
+
+        if (!accountExists) {
+            throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
+        }
+
+        // 3. 배포 상태 조회
+        DeploymentStatus deploymentStatus = deploymentStatusRepository
+                .findByCaseIdAndAccountId(caseId, accountId)
+                .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
+
+        return DeploymentStatusResponse.from(deploymentStatus);
+    }
+
+    /**
+     * 배포 상태 업데이트 (Webhook 또는 수동 호출용)
+     */
+    @Transactional
+    public void updateDeploymentStatus(Long caseId, String accountId,
+                                       DeploymentStatus.StackStatus status, String statusReason) {
+        log.info("Updating deployment status - caseId: {}, accountId: {}, status: {}",
+                caseId, accountId, status);
+
+        DeploymentStatus deploymentStatus = deploymentStatusRepository
+                .findByCaseIdAndAccountId(caseId, accountId)
+                .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
+
+        deploymentStatus.updateStatus(status, statusReason);
+        deploymentStatusRepository.save(deploymentStatus);
+
+        log.info("Deployment status updated successfully");
+    }
 
     @Transactional(readOnly = true)
     public CaseDetailResponse getCaseDetail(Long userId, Long caseId) {
