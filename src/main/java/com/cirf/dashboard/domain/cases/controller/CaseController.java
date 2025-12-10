@@ -18,6 +18,10 @@ import com.cirf.dashboard.domain.cases.dto.response.OnboardingInfoResponse;
 import com.cirf.dashboard.domain.cases.dto.response.StackInfoResponse;
 import com.cirf.dashboard.domain.cases.dto.response.DeploymentStatusResponse;
 import com.cirf.dashboard.domain.cases.entity.DeploymentStatus;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 
 @Slf4j // 추가!
@@ -315,6 +319,56 @@ public class CaseController {
             );
         }
     }
+
+    // SSE API
+    @GetMapping(value = "/{caseId}/deployment/status/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamDeploymentStatus(
+            @PathVariable Long caseId,
+            @RequestParam String accountId,
+            @RequestHeader("userId") Long userId) {
+
+        log.info("SSE connection opened - caseId: {}, accountId: {}, userId: {}",
+                caseId, accountId, userId);
+
+        return caseService.streamDeploymentStatus(userId, caseId, accountId);
+    }
+
+    // 기존 일반 조회 API도 유지
+    @GetMapping("/cases/{caseId}/deployment/status")
+    public ResponseEntity<ResponseMessage> getDeploymentStatus(
+            @PathVariable Long caseId,
+            @RequestParam String accountId,
+            @RequestHeader("X-User-Id") Long userId) {
+
+        DeploymentStatusResponse response = caseService.getDeploymentStatus(caseId, accountId);
+
+        return ResponseEntity.ok(ResponseMessage.builder()
+                .status(200)
+                .message("배포 상태 조회에 성공했습니다.")
+                .data(response)
+                .build());
+    }
+
+    // CaseController.java에 추가
+
+    /**
+     * Stack 생성 정보 실시간 조회 (SSE)
+     * GET /api/v1/cases/{caseId}/onboarding/stack/stream?accountId={accountId}
+     */
+    @GetMapping(value = "/{caseId}/onboarding/stack/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamStackInfo(
+            @PathVariable Long caseId,
+            @RequestParam String accountId,
+            @RequestHeader("userId") Long userId) {
+
+        log.info("SSE connection opened for stack info - caseId: {}, accountId: {}, userId: {}",
+                caseId, accountId, userId);
+
+        return caseService.streamStackInfo(userId, caseId, accountId);
+    }
+
 
     /**
      * 사례 수정 (부분 수정)
