@@ -62,6 +62,7 @@ public class DeploymentStatus {
         DEPLOYED,              // 배포 완료
         DEPLOYMENT_FAILED,     // 배포 실패
         ROLLBACK_IN_PROGRESS,  // 롤백 중
-        ROLLBACK_COMPLETE      // 롤백 완료
+        ROLLBACK_COMPLETE,
+        FAILED // 롤백 완료
     }
 }
