@@ -296,7 +296,6 @@ public class CaseService {
         // 7) DynamoDB에 저장 (사례 정보 및 생성된 버킷명)
         createIntegrationAccount(user, req.getAccountIds(), saved);
         createCaseBucket(userId, saved.getId(), bucketName);
-        initializeDeploymentStatus(saved.getId(), req.getAccountIds());
 
         return new CaseCreateResponse(saved.getId());
     }
@@ -457,6 +456,8 @@ public class CaseService {
                 onboardingInfo.getTemplateContent()
         );
 
+        initializeDeploymentStatus(caseId, accountId);
+
         log.info("Onboarding email sent successfully to {}", emails.size());
     }
 
@@ -497,23 +498,23 @@ public class CaseService {
      * 사례 생성 시 배포 상태 초기화
      * createCase() 메서드 내부에서 호출
      */
-    private void initializeDeploymentStatus(Long caseId, List<String> accountIds) {
-        for (String accountId : accountIds) {
-            String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
-            String roleArn = String.format("arn:aws:iam::%s:role/IRAutomationRole", accountId);
+    private void initializeDeploymentStatus(Long caseId, String accountId) {
 
-            DeploymentStatus deploymentStatus = DeploymentStatus.builder()
-                    .caseId(caseId)
-                    .accountId(accountId)
-                    .stackName(stackName)
-                    .stackStatus(DeploymentStatus.StackStatus.NOT_DEPLOYED)
-                    .statusReason("CloudFormation 템플릿이 생성되었습니다. launchUrl을 통해 배포를 시작하세요.")
-                    .roleArn(roleArn)
-                    .build();
+        String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
+        String roleArn = String.format("arn:aws:iam::%s:role/IRAutomationRole", accountId);
 
-            deploymentStatusRepository.save(deploymentStatus);
-            log.info("Deployment status initialized for case {} and account {}", caseId, accountId);
-        }
+        DeploymentStatus deploymentStatus = DeploymentStatus.builder()
+                .caseId(caseId)
+                .accountId(accountId)
+                .stackName(stackName)
+                .stackStatus(DeploymentStatus.StackStatus.NOT_DEPLOYED)
+                .statusReason("CloudFormation 템플릿이 생성되었습니다. launchUrl을 통해 배포를 시작하세요.")
+                .roleArn(roleArn)
+                .build();
+
+        deploymentStatusRepository.save(deploymentStatus);
+        log.info("Deployment status initialized for case {} and account {}", caseId, accountId);
+
     }
 
     /**
