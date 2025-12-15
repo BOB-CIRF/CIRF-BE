@@ -280,14 +280,13 @@ public class CaseController {
      */
     @PatchMapping("/{caseId}/deployment/status")
     public ResponseEntity<ResponseMessage<Void>> updateDeploymentStatus(
-            @RequestHeader("userId") Long userId,
             @PathVariable("caseId") Long caseId,
             @RequestParam("accountId") String accountId,
             @RequestParam("status") String status,
             @RequestParam(value = "statusReason", required = false) String statusReason) {
 
-        log.info("PATCH /api/v1/cases/{}/deployment/status - userId: {}, accountId: {}, status: {}",
-                caseId, userId, accountId, status);
+        log.info("PATCH /api/v1/cases/{}/deployment/status - accountId: {}, status: {}",
+                caseId, accountId, status);
 
         try {
             DeploymentStatus.StackStatus stackStatus = DeploymentStatus.StackStatus.valueOf(status);
