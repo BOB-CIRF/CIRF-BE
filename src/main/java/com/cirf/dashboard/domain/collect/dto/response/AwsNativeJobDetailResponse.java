@@ -41,6 +41,7 @@ public record AwsNativeJobDetailResponse(
         return switch (status.toLowerCase()) {
             case "pending" -> "대기 중";
             case "inprogress", "in_progress" -> "진행 중";
+            case "skipped" -> "스킵";
             case "completed" -> "완료";
             case "fail", "failed" -> "실패";
             case "nodata" -> "데이터 없음";
