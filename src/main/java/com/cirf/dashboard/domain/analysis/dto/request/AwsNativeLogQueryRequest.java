@@ -29,12 +29,9 @@ public record AwsNativeLogQueryRequest(
         // 키워드 검색 (multi_match로 여러 필드 검색)
         String keyword,
 
-        @NotNull(message = "pageNumber는 필수입니다.")
-        @Min(value = 0, message = "pageNumber는 0 이상이어야 합니다.")
-        Integer pageNumber,
-
         @NotNull(message = "pageSize는 필수입니다.")
         @Min(value = 1, message = "pageSize는 1 이상이어야 합니다.")
-        Integer pageSize
+        Integer pageSize,
+        String searchAfter  // 예: "1733220000000_sort_id_123"
 ) {
 }
