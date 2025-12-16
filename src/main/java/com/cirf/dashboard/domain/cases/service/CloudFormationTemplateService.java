@@ -214,10 +214,10 @@ public class CloudFormationTemplateService {
                 "            Effect: Allow\n" +
                 "            Principal:\n" +
                 "              AWS:\n" +
-                "                - !Sub \"arn:aws:iam::${CIRFAccountId}:role/service-role/ResolveSrcVolss-role-skpki9cf\"\n" +
                 "                - !Sub \"arn:aws:iam::${CIRFAccountId}:role/service-role/ShareSnapshotWithTarget-role-ygxe89tu\"\n" +
                 "                - !Sub \"arn:aws:iam::${CIRFAccountId}:role/service-role/CreateSrcSnapshotss-role-hd6kawee\"\n" +
                 "                - !Sub \"arn:aws:iam::${CIRFAccountId}:role/service-role/CheckSnapshotStatus-role-zr46ewox\"\n" +
+                "                - !Sub \"arn:aws:iam::${CIRFAccountId}:role/service-role/CopySnapshotInTarget-role-gih1e0if\"\n" +
                 "            Action: sts:AssumeRole\n" +
                 "          - Sid: EC2MemoryDump\n" +
                 "            Effect: Allow\n" +
@@ -248,7 +248,7 @@ public class CloudFormationTemplateService {
                 "          PolicyDocument:\n" +
                 "            Version: '2012-10-17'\n" +
                 "            Statement:\n" +
-                "              - Sid: AllowCloudwatchLogcollect\n" +
+                "              - Sid: AllowCloudwatchLogcollectf\n" +
                 "                Effect: Allow\n" +
                 "                Action:\n" +
                 "                  - logs:StartQuery\n" +
@@ -321,6 +321,19 @@ public class CloudFormationTemplateService {
                 "                Action:\n" +
                 "                  - ec2:DescribeSnapshots\n" +
                 "                Resource: \"*\"\n" +
+                "              - Sid: DescribeSnapshotAttribute\n" +
+                "                Effect: Allow\n" +
+                "                Action:\n" +
+                "                  - ec2:DescribeSnapshotAttribute\n" +
+                "                Resource: \"arn:aws:ec2:*:*:snapshot/*\"\n" +
+                "              - Sid: ModifySnapshotAttribute\n" +
+                "                Effect: Allow\n" +
+                "                Action:\n" +
+                "                  - ec2:ModifySnapshotAttribute\n" +
+                "                Resource: \"arn:aws:ec2:*:*:snapshot/*\"\n" +
+                "                Condition:\n" +
+                "                  StringEquals:\n" +
+                "                    ec2:Add/userId: !Ref CIRFAccountId\n" +
                 "              - Sid: KMSForEncryptedVolumes\n" +
                 "                Effect: Allow\n" +
                 "                Action:\n" +
@@ -503,6 +516,16 @@ public class CloudFormationTemplateService {
                 "                  - s3:PutBucketPolicy\n" +
                 "                  - s3:GetBucketLocation\n" +
                 "                Resource: \"arn:aws:s3:::*\"\n" +
+                "        - PolicyName: CloudFormationReadPolicy\n" +
+                "          PolicyDocument:\n" +
+                "            Version: '2012-10-17'\n" +
+                "            Statement:\n" +
+                "              - Effect: Allow\n" +
+                "                Action:\n" +
+                "                  - cloudformation:DescribeStacks\n" +
+                "                  - cloudformation:DescribeStackEvents\n" +
+                "                  - cloudformation:ListStackResources\n" +
+                "                Resource: \"*\"\n" +
                 "\n" +
                 "  CirfOnboardingHook:\n" +
                 "    Type: Custom::CIRFOnboarding\n" +
@@ -511,7 +534,7 @@ public class CloudFormationTemplateService {
                 "      AccountId: !Ref AWS::AccountId\n" +
                 "      RoleArn: !GetAtt IRAutomationRole.Arn\n" +
                 "      CaseId: !Ref CaseId\n" +
-                "\n" +
+                "    \n" +
                 "Outputs:\n" +
                 "  IRAutomationRoleArn:\n" +
                 "    Value: !GetAtt IRAutomationRole.Arn\n" +
