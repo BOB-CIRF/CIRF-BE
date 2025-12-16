@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.analysis.service;
 
+import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;
 import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogRawDataResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogResponse;
@@ -13,8 +14,9 @@ import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -25,7 +27,7 @@ public class AwsNativeLogAnalysisService {
     private final LogEventRepository logEventRepository;
     private final UserRepository userRepository;
 
-    public Page<AwsNativeLogResponse> queryLogs(Long userId, AwsNativeLogQueryRequest request) {
+    public SliceWithSort<AwsNativeLogResponse> queryLogs(Long userId, AwsNativeLogQueryRequest request) {
         log.info("Querying logs - userId: {}, request: {}", userId, request);
 
         // 유저 검증
@@ -34,10 +36,19 @@ public class AwsNativeLogAnalysisService {
 
         String tenantId = String.valueOf(user.getTenant().getId());
 
-        // searchByQuery 사용 (동적 조건 + 라우팅 적용)
-        Page<LogEvent> events = logEventRepository.searchByQuery(tenantId, request);
+        SliceWithSort<LogEvent> eventsWithSort = logEventRepository.queryLogEvents(tenantId, request);
 
-        return events.map(AwsNativeLogResponse::from);
+        List<AwsNativeLogResponse> responses = eventsWithSort.content().stream()
+                .map(AwsNativeLogResponse::from)
+                .toList();
+
+        return SliceWithSort.<AwsNativeLogResponse>builder()
+                .content(responses)
+                .pageSize(eventsWithSort.pageSize())
+                .hasNext(eventsWithSort.hasNext())
+                .lastSortValue(eventsWithSort.lastSortValue())
+                .totalElements(eventsWithSort.totalElements())
+                .build();
     }
 
     public AwsNativeLogRawDataResponse getRawLogData(Long userId, Long caseId, String logId) {

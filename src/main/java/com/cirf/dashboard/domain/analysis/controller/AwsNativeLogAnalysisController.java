@@ -1,5 +1,6 @@
 package com.cirf.dashboard.domain.analysis.controller;
 
+import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;
 import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogRawDataResponse;
 import com.cirf.dashboard.domain.analysis.dto.response.AwsNativeLogResponse;
@@ -31,7 +32,7 @@ public class AwsNativeLogAnalysisController {
             @RequestHeader("userId") @NotNull Long userId,
             @Valid AwsNativeLogQueryRequest request
     ) {
-        Page<AwsNativeLogResponse> logs = awsNativeLogAnalysisService.queryLogs(userId, request);
+        SliceWithSort<AwsNativeLogResponse> logs = awsNativeLogAnalysisService.queryLogs(userId, request);
 
         return new ApiResponse<>(
                 HttpStatus.OK.value(),

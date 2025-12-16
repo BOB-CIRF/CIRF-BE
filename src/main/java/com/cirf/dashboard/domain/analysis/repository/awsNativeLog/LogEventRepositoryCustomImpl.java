@@ -1,6 +1,9 @@
 package com.cirf.dashboard.domain.analysis.repository.awsNativeLog;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch._types.FieldValue;
+import co.elastic.clients.elasticsearch.core.search.Hit;
+import com.cirf.dashboard.domain.analysis.dto.SliceWithSort;
 import com.cirf.dashboard.domain.analysis.dto.request.AwsNativeLogQueryRequest;
 import com.cirf.dashboard.domain.analysis.entity.LogEvent;
 import com.cirf.dashboard.domain.analysis.exception.ElasticsearchCommunicationException;
@@ -35,7 +38,8 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         return IndexCoordinates.of("logs-tenant-" + tenantId + "-" + caseId + "-default");
     }
 
-    public Page<LogEvent> searchByQuery(String tenantId, AwsNativeLogQueryRequest request) {
+    @Override
+    public SliceWithSort<LogEvent> queryLogEvents(String tenantId, AwsNativeLogQueryRequest request) {
         String indexName = "logs-tenant-" + tenantId + "-" + request.caseId() + "-default";
         String routing = tenantId + "|" + request.caseId();
 
@@ -52,15 +56,24 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
 
             // 검색 실행
             boolean hasKeyword = request.keyword() != null && !request.keyword().isBlank();
-            SearchResponse<LogEvent> response = esClient.search(s -> s
-                            .index(indexName)
-                            .query(q -> q.bool(boolBuilder.build()))
-                            .sort(determineSortOption(request))
-                            .from(request.pageNumber() * request.pageSize())
-                            .size(request.pageSize())
-                            .routing(routing)
-                            .trackTotalHits(t -> t.enabled(true))
-                            .trackScores(hasKeyword),
+            boolean isFirstPage = request.searchAfter() == null;
+            SearchResponse<LogEvent> response = esClient.search(s -> {
+                        var searchBuilder = s
+                                .index(indexName)
+                                .query(q -> q.bool(boolBuilder.build()))
+                                .sort(determineSortOptions(request))  // 복합 정렬
+                                .size(request.pageSize() + 1)  // hasNext 확인을 위해 +1
+                                .routing(routing)
+                                .trackScores(hasKeyword)
+                                .trackTotalHits(t -> t.enabled(isFirstPage));  // 첫 페이지만 전체 개수 추적
+
+                        // searchAfter가 있으면 적용
+                        if (request.searchAfter() != null) {
+                            searchBuilder.searchAfter(parseSearchAfter(request.searchAfter()));
+                        }
+
+                        return searchBuilder;
+                    },
                     LogEvent.class
             );
 
@@ -69,6 +82,143 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         } catch (IOException e) {
             log.error("Elasticsearch search failed - Index: {}, Routing: {}", indexName, routing, e);
             throw new ElasticsearchCommunicationException(ErrorMessage.ELASTICSEARCH_COMMUNICATION_ERROR);
+        }
+    }
+
+    private List<co.elastic.clients.elasticsearch._types.SortOptions> determineSortOptions(AwsNativeLogQueryRequest request) {
+        // tie-breaker로 _doc 추가하여 안정적인 정렬 보장 (_id는 정렬 불가)
+        if (request.keyword() != null && !request.keyword().isBlank()) {
+            // 파일 경로 검색(/로 시작)은 timestamp로 정렬, 일반 키워드는 score로 정렬
+            boolean isFilePath = request.keyword().startsWith("/");
+            if (isFilePath) {
+                return List.of(
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .field(f -> f.field("@timestamp").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
+                        ),
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
+                        )
+                );
+            } else {
+                return List.of(
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .score(sc -> sc.order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
+                        ),
+                        co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                                .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
+                        )
+                );
+            }
+        }
+        return List.of(
+                co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                        .field(f -> f.field("@timestamp").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
+                ),
+                co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
+                        .doc(d -> d.order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))
+                )
+        );
+    }
+
+    private SliceWithSort<LogEvent> mapSearchResponse(SearchResponse<LogEvent> response,
+                                                      AwsNativeLogQueryRequest request) {
+        List<Hit<LogEvent>> hits = response.hits().hits();
+
+        // hasNext 확인을 위해 pageSize + 1 만큼 조회했으므로, hasNext 여부 확인
+        boolean hasNext = hits.size() > request.pageSize();
+
+        // 실제 반환할 데이터는 pageSize 만큼만
+        List<Hit<LogEvent>> contentHits = hits.stream()
+                .limit(request.pageSize())
+                .toList();
+
+        List<LogEvent> content = contentHits.stream()
+                .map(hit -> {
+                    LogEvent event = hit.source();
+                    if (event != null && event.getId() == null) {
+                        event.setId(hit.id());
+                    }
+                    return event;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        // 마지막 문서의 sort 값 추출 (배열 형태로 직렬화)
+        String lastSortValue = null;
+        if (!contentHits.isEmpty()) {
+            Hit<LogEvent> lastHit = contentHits.get(contentHits.size() - 1);
+            if (lastHit.sort() != null && !lastHit.sort().isEmpty()) {
+                lastSortValue = serializeSortValues(lastHit.sort());
+            }
+        }
+
+        // 전체 개수 추출
+        long totalElements = response.hits().total() != null ? response.hits().total().value() : 0;
+
+        Slice<LogEvent> slice = new SliceImpl<>(content, PageRequest.of(0, request.pageSize()), hasNext);
+        return SliceWithSort.of(slice, lastSortValue, totalElements);
+    }
+
+    private List<FieldValue> parseSearchAfter(String searchAfter) {
+        try {
+            String[] parts = searchAfter.split("_sort_id_");
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("Invalid searchAfter format: " + searchAfter);
+            }
+
+            // 첫 번째 값: long 또는 double
+            FieldValue firstValue;
+            if (parts[0].contains(".")) {
+                // double (score)
+                firstValue = FieldValue.of(Double.parseDouble(parts[0]));
+            } else {
+                // long (timestamp)
+                firstValue = FieldValue.of(Long.parseLong(parts[0]));
+            }
+
+            // 두 번째 값: _doc
+            long docValue = Long.parseLong(parts[1]);
+
+            return List.of(firstValue, FieldValue.of(docValue));
+        } catch (Exception e) {
+            log.error("Failed to parse searchAfter: {}", searchAfter, e);
+            throw new ElasticsearchCommunicationException(ErrorMessage.ELASTICSEARCH_COMMUNICATION_ERROR);
+        }
+    }
+
+    private String serializeSortValues(List<FieldValue> sortValues) {
+        try {
+            if (sortValues.size() != 2) {
+                log.warn("Expected 2 sort values, got {}", sortValues.size());
+                return null;
+            }
+
+            // 첫 번째 값: timestamp (long) 또는 score (double)
+            String firstValue;
+            if (sortValues.get(0).isLong()) {
+                firstValue = String.valueOf(sortValues.get(0).longValue());
+            } else if (sortValues.get(0).isDouble()) {
+                firstValue = String.valueOf(sortValues.get(0).doubleValue());
+            } else {
+                log.warn("First sort value is not a number: {}", sortValues.get(0));
+                return null;
+            }
+
+            // 두 번째 값: _doc
+            long docValue;
+            if (sortValues.get(1).isLong()) {
+                docValue = sortValues.get(1).longValue();
+            } else if (sortValues.get(1).isDouble()) {
+                docValue = (long) sortValues.get(1).doubleValue();
+            } else {
+                log.warn("Second sort value is not a number: {}", sortValues.get(1));
+                return null;
+            }
+
+            return firstValue + "_sort_id_" + docValue;
+        } catch (Exception e) {
+            log.error("Failed to serialize sort values", e);
+            return null;
         }
     }
 
@@ -166,25 +316,6 @@ public class LogEventRepositoryCustomImpl implements LogEventRepositoryCustom {
         return co.elastic.clients.elasticsearch._types.SortOptions.of(s -> s
                 .field(f -> f.field("@timestamp").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))
         );
-    }
-
-    private Page<LogEvent> mapSearchResponse(SearchResponse<LogEvent> response,
-                                              AwsNativeLogQueryRequest request) {
-        List<LogEvent> content = response.hits().hits().stream()
-                .map(hit -> {
-                    LogEvent event = hit.source();
-                    if (event != null && event.getId() == null) {
-                        event.setId(hit.id());
-                    }
-                    return event;
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
-
-        Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
-        long total = response.hits().total() != null ? response.hits().total().value() : 0;
-
-        return new PageImpl<>(content, pageable, total);
     }
 
     @Override

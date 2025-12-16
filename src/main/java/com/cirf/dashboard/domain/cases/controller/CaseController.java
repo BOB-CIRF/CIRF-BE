@@ -8,10 +8,14 @@ import com.cirf.dashboard.domain.cases.dto.response.CaseListResponse;
 import com.cirf.dashboard.domain.cases.dto.response.CaseDetailResponse;
 import com.cirf.dashboard.domain.cases.service.CaseService;
 import com.cirf.dashboard.domain.cases.dto.request.SendOnboardingEmailRequest;
+import com.cirf.dashboard.domain.cases.service.DeploymentSseHub;
+import com.cirf.dashboard.global.common.dto.ApiResponse;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.cirf.dashboard.domain.cases.dto.request.CaseUpdateRequest;
 import com.cirf.dashboard.domain.cases.dto.response.CaseUpdateResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.cirf.dashboard.domain.cases.dto.response.OnboardingInfoResponse;
@@ -20,20 +24,17 @@ import com.cirf.dashboard.domain.cases.dto.response.DeploymentStatusResponse;
 import com.cirf.dashboard.domain.cases.entity.DeploymentStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.http.MediaType;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 
 
 @Slf4j // 추가!
 @RestController
 @RequestMapping("/api/v1/cases")
+@RequiredArgsConstructor
 public class CaseController {
 
     private final CaseService caseService;
-
-    public CaseController(CaseService caseService) {
-        this.caseService = caseService;
-    }
+    private final DeploymentSseHub deploymentSseHub;
 
     /**
      * 사례 생성
@@ -279,7 +280,7 @@ public class CaseController {
      * PATCH /api/v1/cases/{caseId}/deployment/status
      */
     @PatchMapping("/{caseId}/deployment/status")
-    public ResponseEntity<ResponseMessage<Void>> updateDeploymentStatus(
+    public ApiResponse<String> updateDeploymentStatus(
             @PathVariable("caseId") Long caseId,
             @RequestParam("accountId") String accountId,
             @RequestParam("status") String status,
@@ -288,49 +289,38 @@ public class CaseController {
         log.info("PATCH /api/v1/cases/{}/deployment/status - accountId: {}, status: {}",
                 caseId, accountId, status);
 
-        try {
-            DeploymentStatus.StackStatus stackStatus = DeploymentStatus.StackStatus.valueOf(status);
-            caseService.updateDeploymentStatus(caseId, accountId, stackStatus, statusReason);
 
-            return ResponseEntity.ok(
-                    ResponseMessage.<Void>builder()
-                            .status(200)
-                            .message("배포 상태가 업데이트되었습니다.")
-                            .build()
-            );
+        caseService.updateDeploymentStatusAndPublish(caseId, accountId, status, statusReason);
 
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid status value: {}", status);
-            return ResponseEntity.badRequest().body(
-                    ResponseMessage.<Void>builder()
-                            .status(400)
-                            .message("잘못된 상태 값입니다: " + status)
-                            .build()
-            );
-
-        } catch (Exception e) {
-            log.error("Deployment status update error: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().body(
-                    ResponseMessage.<Void>builder()
-                            .status(500)
-                            .message("배포 상태 업데이트 중 오류가 발생했습니다.")
-                            .build()
-            );
-        }
+        return new ApiResponse<>(HttpStatus.OK.value(), "배포 상태가 업데이트 되었습니다.", null);
     }
 
+
     // SSE API
-    @GetMapping(value = "/{caseId}/deployment/status/stream",
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(
+            value = "/{caseId}/onboarding/stack/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE
+    )
     public SseEmitter streamDeploymentStatus(
             @PathVariable Long caseId,
             @RequestParam String accountId,
             @RequestHeader("userId") Long userId) {
 
-        log.info("SSE connection opened - caseId: {}, accountId: {}, userId: {}",
-                caseId, accountId, userId);
+        caseService.validateCaseOwnership(userId, caseId, accountId);
 
-        return caseService.streamDeploymentStatus(userId, caseId, accountId);
+        SseEmitter emitter = deploymentSseHub.subscribe(caseId, accountId);
+
+        DeploymentStatusResponse status = caseService.getDeploymentStatusOrDefault(caseId, accountId);
+        deploymentSseHub.publish(caseId, accountId, status);
+
+        if (status.getDeploymentStatus().equals(DeploymentStatus.StackStatus.DEPLOYED.name())
+                || status.getDeploymentStatus().equals(DeploymentStatus.StackStatus.DEPLOYMENT_FAILED.name())
+                || status.getDeploymentStatus().equals(DeploymentStatus.StackStatus.FAILED.name())
+                || status.getDeploymentStatus().equals(DeploymentStatus.StackStatus.ROLLBACK_COMPLETE.name())) {
+            deploymentSseHub.complete(caseId, accountId, "ok");
+        }
+
+        return emitter;
     }
 
     // 기존 일반 조회 API도 유지
@@ -355,18 +345,18 @@ public class CaseController {
      * Stack 생성 정보 실시간 조회 (SSE)
      * GET /api/v1/cases/{caseId}/onboarding/stack/stream?accountId={accountId}
      */
-    @GetMapping(value = "/{caseId}/onboarding/stack/stream",
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamStackInfo(
-            @PathVariable Long caseId,
-            @RequestParam String accountId,
-            @RequestHeader("userId") Long userId) {
-
-        log.info("SSE connection opened for stack info - caseId: {}, accountId: {}, userId: {}",
-                caseId, accountId, userId);
-
-        return caseService.streamStackInfo(userId, caseId, accountId);
-    }
+//    @GetMapping(value = "/{caseId}/onboarding/stack/stream",
+//            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+//    public SseEmitter streamStackInfo(
+//            @PathVariable Long caseId,
+//            @RequestParam String accountId,
+//            @RequestHeader("userId") Long userId) {
+//
+//        log.info("SSE connection opened for stack info - caseId: {}, accountId: {}, userId: {}",
+//                caseId, accountId, userId);
+//
+//        return caseService.streamStackInfo(userId, caseId, accountId);
+//    }
 
 
     /**
@@ -390,6 +380,17 @@ public class CaseController {
                         .data(response)
                         .build()
         );
+    }
+
+    @GetMapping("/test")
+    public ApiResponse<String> test(
+            @RequestHeader("userId") long userId,
+            @RequestParam("caseId") long caseId,
+            @RequestParam("accountId") String accountId
+    ) {
+        caseService.initializeDeploymentStatus(caseId, accountId);
+
+        return new ApiResponse<>(HttpStatus.OK.value(), "<UNK> <UNK> <UNK>.", null);
     }
 
 } // 클래스 닫는 중괄호
