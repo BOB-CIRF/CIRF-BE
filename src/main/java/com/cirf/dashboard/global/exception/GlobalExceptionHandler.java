@@ -10,6 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
@@ -46,6 +47,19 @@ public class GlobalExceptionHandler {
                 .orElse("입력값이 올바르지 않습니다.");
 
         ExceptionResponse body = ExceptionResponse.of(HttpStatus.BAD_REQUEST, message);
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ExceptionResponse> handleMethodValidationException(HandlerMethodValidationException e) {
+        String message = e.getAllErrors().stream()
+                .findFirst()
+                .map(error -> error.getDefaultMessage())
+                .orElse("입력값이 올바르지 않습니다.");
+
+        ExceptionResponse body = ExceptionResponse.of(HttpStatus.BAD_REQUEST, message);
+        log.warn("Validation error: {}", message);
 
         return ResponseEntity.badRequest().body(body);
     }

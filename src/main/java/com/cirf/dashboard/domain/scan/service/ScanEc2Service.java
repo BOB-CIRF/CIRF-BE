@@ -71,7 +71,9 @@ public class ScanEc2Service {
                 || "*".equals(request.accountId()) || "ALL".equalsIgnoreCase(request.accountId())) {
             targetAccountIds = accountIdRepository.findAccountIdsByIncidentCaseId(request.caseId());
             if (targetAccountIds == null || targetAccountIds.isEmpty()) {
-                throw new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND);
+                log.info("No accounts registered for caseId: {}, returning empty result", request.caseId());
+                Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
+                return new SliceImpl<>(Collections.emptyList(), pageable, false);
             }
         } else {
             targetAccountIds = List.of(request.accountId());
@@ -86,7 +88,9 @@ public class ScanEc2Service {
         }
 
         if (scanIdToAccountMap.isEmpty()) {
-            throw new NotFoundEc2MetadataException(ErrorMessage.EC2_METADATA_NOT_FOUND);
+            log.info("No EC2 scan metadata found for caseId: {}, returning empty result", request.caseId());
+            Pageable pageable = PageRequest.of(request.pageNumber(), request.pageSize());
+            return new SliceImpl<>(Collections.emptyList(), pageable, false);
         }
 
         List<Long> ec2ScanIds = new ArrayList<>(scanIdToAccountMap.keySet());
