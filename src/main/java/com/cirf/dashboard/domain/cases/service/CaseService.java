@@ -5,15 +5,10 @@ import com.cirf.dashboard.domain.auth.entity.User;
 import com.cirf.dashboard.domain.auth.exception.UserNotFoundException;
 import com.cirf.dashboard.domain.auth.repository.UserRepository;
 import com.cirf.dashboard.domain.cases.dto.request.CaseCreateRequest;
-import com.cirf.dashboard.domain.cases.dto.response.CaseCreateResponse;
-import com.cirf.dashboard.domain.cases.dto.response.CaseDeleteResponse;
-import com.cirf.dashboard.domain.cases.dto.response.CaseListResponse;
+import com.cirf.dashboard.domain.cases.dto.response.*;
 import com.cirf.dashboard.domain.cases.dto.request.CaseUpdateRequest;
-import com.cirf.dashboard.domain.cases.dto.response.CaseUpdateResponse;
-import com.cirf.dashboard.domain.cases.dto.response.CaseDetailResponse;
 import com.cirf.dashboard.domain.cases.entity.*;
-import com.cirf.dashboard.domain.cases.exception.ExistsAccountIdException;
-import com.cirf.dashboard.domain.cases.exception.NotFoundBucketException;
+import com.cirf.dashboard.domain.cases.exception.*;
 import com.cirf.dashboard.domain.cases.repository.CaseBucketRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,19 +16,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-import com.cirf.dashboard.domain.cases.dto.response.OnboardingInfoResponse;
 // 2. Import 추가
 import com.cirf.dashboard.domain.cases.entity.DeploymentStatus;
-import com.cirf.dashboard.domain.cases.dto.response.DeploymentStatusResponse;
 import com.cirf.dashboard.domain.cases.repository.DeploymentStatusRepository;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Map;
 import java.util.HashMap;
-import com.cirf.dashboard.domain.cases.exception.AccessDeniedException;
-import com.cirf.dashboard.domain.cases.exception.ErrorMessage;
+
 import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
 import com.cirf.dashboard.domain.cases.repository.IncidentCaseRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,8 +35,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.cirf.dashboard.domain.cases.repository.IntegrationAccountRepository;
-import com.cirf.dashboard.domain.cases.dto.response.StackInfoResponse;
 
+import java.io.IOException;
 import java.util.List;
 
 @Slf4j
@@ -61,7 +54,8 @@ public class CaseService {
     private final S3EventService s3EventService;
     private final CloudFormationTemplateService cloudFormationTemplateService;
     private final EmailService emailService;
-    private final CloudFormationStackService cloudFormationStackService;  // 의존성 주입 추가
+    private final CloudFormationStackService cloudFormationStackService;
+    private final DeploymentSseHub deploymentSseHub;
 
     @Value("${aws.sqs.shared-queue-arn}")
     private String sharedQueueArn;
@@ -498,7 +492,7 @@ public class CaseService {
      * 사례 생성 시 배포 상태 초기화
      * createCase() 메서드 내부에서 호출
      */
-    private void initializeDeploymentStatus(Long caseId, String accountId) {
+    public void initializeDeploymentStatus(Long caseId, String accountId) {
 
         String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
         String roleArn = String.format("arn:aws:iam::%s:role/IRAutomationRole", accountId);
@@ -608,255 +602,375 @@ public class CaseService {
     }
 
     // CaseService.java에 추가
+    @Transactional(readOnly = true)
+    public DeploymentStatusResponse getDeploymentStatusOrDefault(Long caseId, String accountId) {
+        return deploymentStatusRepository
+                .findByCaseIdAndAccountId(caseId, accountId)
+                .map(DeploymentStatusResponse::from)
+                .orElseThrow();
+    }
+
+    @Transactional
+    public void updateDeploymentStatusAndPublish(Long caseId, String accountId, String status, String statusReason) {
+
+        DeploymentStatus.StackStatus stackStatus = DeploymentStatus.StackStatus.valueOf(status);
+
+        log.info("Updating deployment status - caseId: {}, accountId: {}, status: {}",
+                caseId, accountId, status);
+
+        DeploymentStatus deploymentStatus = deploymentStatusRepository
+                .findByCaseIdAndAccountId(caseId, accountId)
+                .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
+
+        deploymentStatus.updateStatus(stackStatus, statusReason);
+        deploymentStatusRepository.save(deploymentStatus);
+
+        log.info("Deployment status updated successfully");
+        DeploymentStatusResponse response = getDeploymentStatus(caseId, accountId); // 최신 상태
+
+        deploymentSseHub.publish(caseId, accountId, response);
+
+        if (stackStatus == DeploymentStatus.StackStatus.DEPLOYED
+                || stackStatus == DeploymentStatus.StackStatus.FAILED) {
+            deploymentSseHub.complete(caseId, accountId, "ok");
+        }
+    }
 
     /**
      * 배포 상태 실시간 스트리밍 (SSE)
      */
-    public SseEmitter streamDeploymentStatus(Long userId, Long caseId, String accountId) {
-        log.info("Starting deployment status streaming - caseId: {}, accountId: {}, userId: {}",
-                caseId, accountId, userId);
+//    public SseEmitter streamDeploymentStatus(Long userId, Long caseId, String accountId) {
+//
+//        validateUser(userId);
+//        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
+//                .orElseThrow(() -> new NotFoundBucketException(ErrorMessage.CASE_NOT_FOUND));
+//
+//        if (!incidentCase.getUser().getId().equals(userId)) {
+//            throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
+//        }
+//
+//        boolean accountExists = incidentCase.getAccountIdList().stream()
+//                .anyMatch(acc -> acc.getAccountId().equals(accountId));
+//        if (!accountExists) throw new NotFoundAccountException(ErrorMessage.ACCOUNT_NOT_FOUND);
+//
+//        SseEmitter emitter = new SseEmitter(300_000L);
+//        ExecutorService executor = Executors.newSingleThreadExecutor();
+//        AtomicBoolean stopped = new AtomicBoolean(false);
+//
+//        Runnable stop = () -> {
+//            stopped.set(true);
+//            executor.shutdownNow();
+//        };
+//
+//        emitter.onCompletion(stop);
+//        emitter.onTimeout(() -> {
+//            log.warn("SSE timeout - caseId={}, accountId={}", caseId, accountId);
+//            emitter.complete();
+//            stop.run();
+//        });
+//        emitter.onError(e -> {
+//            log.warn("SSE error - caseId={}, accountId={}, err={}", caseId, accountId, e.toString());
+//            stop.run();
+//        });
+//
+//        executor.execute(() -> {
+//            try {
+//                // 연결 직후 한번 보내주면 프록시/브라우저 안정성 올라감
+//                try {
+//                    emitter.send(SseEmitter.event().name("connected").data("ok"));
+//                } catch (IOException ioe) {
+//                    return; // 이미 클라가 끊김
+//                }
+//
+//                while (!stopped.get()) {
+//                    Optional<DeploymentStatus> opt = deploymentStatusRepository
+//                            .findByCaseIdAndAccountId(caseId, accountId);
+//
+//                    if (opt.isEmpty()) {
+//                        // 아직 생성 전이면 에러로 끊지 말고 상태만 보내기
+//                        try {
+//                            emitter.send(SseEmitter.event()
+//                                    .name("deployment-status")
+//                                    .data(Map.of("stackStatus", "NOT_READY_YET")));
+//                        } catch (IOException ioe) {
+//                            break;
+//                        }
+//                    } else {
+//                        DeploymentStatus ds = opt.get();
+//                        DeploymentStatusResponse response = DeploymentStatusResponse.from(ds);
+//
+//                        try {
+//                            emitter.send(SseEmitter.event().name("deployment-status").data(response));
+//                        } catch (IOException ioe) {
+//                            // 클라이언트/프록시가 끊은 것 → 정상 종료
+//                            break;
+//                        }
+//
+//                        if (ds.getStackStatus() == DeploymentStatus.StackStatus.DEPLOYED
+//                                || ds.getStackStatus() == DeploymentStatus.StackStatus.FAILED) {
+//                            emitter.complete();
+//                            break;
+//                        }
+//                    }
+//
+//                    // heartbeat는 2초 폴링이면 사실상 계속 데이터가 나가서 필요성이 낮지만,
+//                    // DB가 변동 없을 때도 프록시 끊김이 있다면 5~10초마다 heartbeat 추천
+//                    Thread.sleep(2000);
+//                }
+//            } catch (InterruptedException ie) {
+//                Thread.currentThread().interrupt();
+//                emitter.complete();
+//            } catch (Exception e) {
+//                // 진짜 서버 내부 오류만 error로
+//                log.error("SSE internal error - caseId={}, accountId={}", caseId, accountId, e);
+//                emitter.completeWithError(e);
+//            } finally {
+//                stop.run();
+//            }
+//        });
+//
+//        return emitter;
+//    }
 
-        // 1. 사용자 및 권한 검증
-        if (userId == null || userId <= 0) {
-            throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-        }
+
+    // CaseService.java에 추가
+
+    public void validateCaseOwnership(Long userId, Long caseId, String accountId) {
         validateUser(userId);
 
-        // 2. 사례 존재 여부 및 권한 확인
         IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사례입니다: " + caseId));
+                .orElseThrow(() -> new NotFoundBucketException(ErrorMessage.CASE_NOT_FOUND));
 
         if (!incidentCase.getUser().getId().equals(userId)) {
-            log.warn("User {} attempted to view case {} owned by user {}",
-                    userId, caseId, incidentCase.getUser().getId());
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
 
-        // 3. 계정 ID 확인
         boolean accountExists = incidentCase.getAccountIdList().stream()
                 .anyMatch(acc -> acc.getAccountId().equals(accountId));
 
-        if (!accountExists) {
-            throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
-        }
-
-        // 4. SSE Emitter 생성 (5분 timeout)
-        SseEmitter emitter = new SseEmitter(300000L);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
-        executor.execute(() -> {
-            try {
-                while (true) {
-                    // DB에서 최신 배포 상태 조회
-                    DeploymentStatus deploymentStatus = deploymentStatusRepository
-                            .findByCaseIdAndAccountId(caseId, accountId)
-                            .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
-
-                    // 응답 DTO 생성
-                    DeploymentStatusResponse response = DeploymentStatusResponse.from(deploymentStatus);
-
-                    // 클라이언트로 데이터 전송
-                    emitter.send(SseEmitter.event()
-                            .name("deployment-status")
-                            .data(response));
-
-                    log.debug("Sent deployment status - caseId: {}, accountId: {}, status: {}",
-                            caseId, accountId, deploymentStatus.getStackStatus());
-
-                    // 배포가 완료되었거나 실패했으면 스트림 종료
-                    if (deploymentStatus.getStackStatus() == DeploymentStatus.StackStatus.DEPLOYED ||
-                            deploymentStatus.getStackStatus() == DeploymentStatus.StackStatus.FAILED) {
-                        log.info("Deployment reached terminal state: {}, closing SSE",
-                                deploymentStatus.getStackStatus());
-                        emitter.complete();
-                        break;
-                    }
-
-                    // 2초마다 polling
-                    Thread.sleep(2000);
-                }
-            } catch (Exception e) {
-                log.error("Error during deployment status streaming - caseId: {}, accountId: {}",
-                        caseId, accountId, e);
-                emitter.completeWithError(e);
-            } finally {
-                executor.shutdown();
-            }
-        });
-
-        // Emitter 에러 처리
-        emitter.onCompletion(() -> {
-            log.info("SSE connection completed - caseId: {}, accountId: {}", caseId, accountId);
-            executor.shutdown();
-        });
-
-        emitter.onTimeout(() -> {
-            log.warn("SSE connection timeout - caseId: {}, accountId: {}", caseId, accountId);
-            emitter.complete();
-            executor.shutdown();
-        });
-
-        emitter.onError((e) -> {
-            log.error("SSE connection error - caseId: {}, accountId: {}", caseId, accountId, e);
-            executor.shutdown();
-        });
-
-        return emitter;
+        if (!accountExists) throw new NotFoundAccountException(ErrorMessage.ACCOUNT_NOT_FOUND);
     }
-
-    // CaseService.java에 추가
 
     /**
      * Stack 생성 정보 실시간 스트리밍 (SSE)
      */
-    public SseEmitter streamStackInfo(Long userId, Long caseId, String accountId) {
-        log.info("Starting stack info streaming - caseId: {}, accountId: {}, userId: {}",
-                caseId, accountId, userId);
+//    public SseEmitter streamStackInfo(Long userId, Long caseId, String accountId) {
+//        log.info("Starting stack info streaming - caseId: {}, accountId: {}, userId: {}",
+//                caseId, accountId, userId);
+//
+//        validateUser(userId);
+//
+//        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
+//                .orElseThrow(() -> new NotFoundBucketException(ErrorMessage.CASE_NOT_FOUND));
+//
+//        if (!incidentCase.getUser().getId().equals(userId)) {
+//            log.warn("User {} attempted to view case {} owned by user {}",
+//                    userId, caseId, incidentCase.getUser().getId());
+//            throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
+//        }
+//
+//        boolean accountExists = incidentCase.getAccountIdList().stream()
+//                .anyMatch(acc -> acc.getAccountId().equals(accountId));
+//        if (!accountExists) throw new NotFoundAccountException(ErrorMessage.ACCOUNT_NOT_FOUND);
+//
+//        // 5분 timeout
+//        SseEmitter emitter = new SseEmitter(300_000L);
+//        ExecutorService executor = Executors.newSingleThreadExecutor();
+//
+//        AtomicBoolean stopped = new AtomicBoolean(false);
+//
+//        Runnable stop = () -> {
+//            stopped.set(true);
+//            executor.shutdownNow();
+//        };
+//
+//        // 콜백들: 종료 플래그 + complete
+//        emitter.onCompletion(() -> {
+//            log.info("SSE connection completed - caseId: {}, accountId: {}", caseId, accountId);
+//            stop.run();
+//        });
+//        emitter.onTimeout(() -> {
+//            log.warn("SSE connection timeout - caseId: {}, accountId: {}", caseId, accountId);
+//            try { emitter.complete(); } catch (Exception ignored) {}
+//            stop.run();
+//        });
+//        emitter.onError(e -> {
+//            log.warn("SSE connection error - caseId: {}, accountId: {}, err={}",
+//                    caseId, accountId, e.toString());
+//            stop.run();
+//        });
+//
+//        final int MAX_NOT_CREATED_POLLS = 150; // 5분 (2초 폴링 기준)
+//        final int HEARTBEAT_EVERY = 5;         // 2초 폴링 기준 10초마다 heartbeat 권장
+//
+//        executor.execute(() -> {
+//            int pollCount = 0;
+//            int notCreatedCount = 0;
+//
+//            try {
+//                if (!safeSend(emitter, SseEmitter.event().name("connected").data("ok"))) {
+//                    return; // 이미 클라이언트가 끊김
+//                }
+//
+//                while (!stopped.get()) {
+//                    pollCount++;
+//
+//                    try {
+//                        StackInfoResponse stackInfo = cloudFormationStackService.getStackInfo(caseId, accountId);
+//                        notCreatedCount = 0;
+//
+//                        String status = stackInfo.getStackStatus();
+//                        log.debug("Fetched stack info - caseId: {}, accountId: {}, status: {}, poll: {}",
+//                                caseId, accountId, status, pollCount);
+//
+//                        if (isTerminal(status)) {
+//                            if (!safeSend(emitter, SseEmitter.event()
+//                                    .name("complete")
+//                                    .data(Map.of(
+//                                            "message", "Stack deployment completed",
+//                                            "finalStatus", status,
+//                                            "caseId", caseId,
+//                                            "accountId", accountId
+//                                    )))) {
+//                                return;
+//                            }
+//                            emitter.complete();
+//                            break;
+//                        }
+//
+//                        if (!safeSend(emitter, SseEmitter.event().name("stack-info").data(stackInfo))) {
+//                            return;
+//                        }
+//
+//                    } catch (IllegalStateException e) {
+//                        notCreatedCount++;
+//
+//                        NotCreatedResponse notCreatedResponse = NotCreatedResponse.builder()
+//                                .caseId(caseId)
+//                                .accountId(accountId)
+//                                .stackName(String.format("CIRF-Case-%d-Account-%s", caseId, accountId))
+//                                .stackStatus("NOT_CREATED")
+//                                .statusReason(String.format(
+//                                        "Stack이 아직 생성되지 않았습니다. CloudFormation Launch URL을 통해 배포를 시작하세요. (%d/%d)",
+//                                        notCreatedCount, MAX_NOT_CREATED_POLLS))
+//                                .build();
+//
+//                        if (!safeSend(emitter, SseEmitter.event().name("stack-info").data(notCreatedResponse))) {
+//                            return;
+//                        }
+//
+//                        if (notCreatedCount >= MAX_NOT_CREATED_POLLS) {
+//                            safeSend(emitter, SseEmitter.event()
+//                                    .name("complete")
+//                                    .data(Map.of(
+//                                            "message", "Stack not created after timeout",
+//                                            "finalStatus", "NOT_CREATED",
+//                                            "caseId", caseId,
+//                                            "accountId", accountId
+//                                    )));
+//                            emitter.complete();
+//                            break;
+//                        }
+//
+//                    } catch (RuntimeException e) {
+//                        String msg = (e.getMessage() == null) ? "" : e.getMessage();
+//                        boolean fatal = looksFatalAuthOrAccess(msg);
+//
+//                        log.warn("Stack access/runtime error - fatal={}, caseId={}, accountId={}, poll={}, msg={}",
+//                                fatal, caseId, accountId, pollCount, msg);
+//
+//                        if (fatal) {
+//                            // 회복 불가능: error 이벤트 보내고 종료(여긴 completeWithError 유지 가능)
+//                            safeSend(emitter, SseEmitter.event()
+//                                    .name("error")
+//                                    .data(Map.of(
+//                                            "message", "Stack 접근 실패: " + msg,
+//                                            "errorType", "ACCESS_DENIED",
+//                                            "caseId", caseId,
+//                                            "accountId", accountId
+//                                    )));
+//                            emitter.completeWithError(e);
+//                            break;
+//                        } else {
+//                            // 회복 가능(일시적): 진행중처럼 보내고 계속 폴링
+//                            if (!safeSend(emitter, SseEmitter.event()
+//                                    .name("stack-info")
+//                                    .data(Map.of(
+//                                            "caseId", caseId,
+//                                            "accountId", accountId,
+//                                            "stackName", String.format("CIRF-Case-%d-Account-%s", caseId, accountId),
+//                                            "stackStatus", "CREATE_IN_PROGRESS",
+//                                            "statusReason", "Stack 생성/권한 준비 중... (시도 " + pollCount + ")"
+//                                    )))) {
+//                                return;
+//                            }
+//                        }
+//                    }
+//
+//                    if (pollCount % HEARTBEAT_EVERY == 0) {
+//                        if (!safeSend(emitter, SseEmitter.event()
+//                                .name("heartbeat")
+//                                .data(Map.of("ts", System.currentTimeMillis())))) {
+//                            return;
+//                        }
+//                    }
+//
+//                    Thread.sleep(2000);
+//                }
+//
+//            } catch (InterruptedException ie) {
+//                Thread.currentThread().interrupt();
+//                try { emitter.complete(); } catch (Exception ignored) {}
+//            } catch (Exception e) {
+//                // 진짜 서버 내부 오류만 여기로
+//                log.error("Error during stack info streaming - caseId: {}, accountId: {}", caseId, accountId, e);
+//                emitter.completeWithError(e);
+//            } finally {
+//                stop.run();
+//                log.info("SSE stream ended - caseId: {}, accountId: {}, totalPolls: {}", caseId, accountId, pollCount);
+//            }
+//        });
+//
+//        return emitter;
+//    }
 
-        // 1. 사용자 및 권한 검증
+//    private boolean safeSend(SseEmitter emitter, SseEmitter.SseEventBuilder event) {
+//        try {
+//            emitter.send(event);
+//            return true;
+//        } catch (IOException ioe) {
+//            // Broken pipe / reset by peer 등: 클라이언트가 끊은 것
+//            return false;
+//        }
+//    }
+//
+//    private boolean isTerminal(String status) {
+//        if (status == null) return false;
+//        return "CREATE_COMPLETE".equals(status)
+//                || "UPDATE_COMPLETE".equals(status)
+//                || "DELETE_COMPLETE".equals(status)
+//                || "ROLLBACK_COMPLETE".equals(status)
+//                || "CREATE_FAILED".equals(status)
+//                || status.endsWith("_FAILED");
+//    }
+//
+//    private boolean looksFatalAuthOrAccess(String msg) {
+//        String m = msg.toLowerCase();
+//        return m.contains("not authorized")
+//                || m.contains("accessdenied")
+//                || m.contains("is not authorized")
+//                || m.contains("forbidden")
+//                || m.contains("describeStacks".toLowerCase())
+//                || m.contains("no identity-based policy")
+//                || m.contains("assumerole")
+//                || m.contains("irautomationrole");
+//    }
+
+
+    public void validateUser(Long userId) {
         if (userId == null || userId <= 0) {
             throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
         }
-        validateUser(userId);
-
-        // 2. 사례 존재 여부 및 권한 확인
-        IncidentCase incidentCase = incidentCaseRepository.findById(caseId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사례입니다: " + caseId));
-
-        if (!incidentCase.getUser().getId().equals(userId)) {
-            log.warn("User {} attempted to view case {} owned by user {}",
-                    userId, caseId, incidentCase.getUser().getId());
-            throw new AccessDeniedException(ErrorMessage.ACCESS_DENIED);
-        }
-
-        // 3. 계정 ID 확인
-        boolean accountExists = incidentCase.getAccountIdList().stream()
-                .anyMatch(acc -> acc.getAccountId().equals(accountId));
-
-        if (!accountExists) {
-            throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
-        }
-
-        // 4. SSE Emitter 생성 (무제한 timeout)
-        SseEmitter emitter = new SseEmitter(0L); // 0L = 무제한
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
-        executor.execute(() -> {
-            try {
-                int pollCount = 0;
-                boolean isComplete = false;
-
-                while (!isComplete) {
-                    try {
-                        // CloudFormation Stack 정보 조회 시도
-                        StackInfoResponse stackInfo = cloudFormationStackService.getStackInfo(caseId, accountId);
-
-                        // 클라이언트로 데이터 전송
-                        emitter.send(SseEmitter.event()
-                                .name("stack-info")
-                                .data(stackInfo));
-
-                        log.debug("Sent stack info - caseId: {}, accountId: {}, status: {}, poll: {}",
-                                caseId, accountId, stackInfo.getStackStatus(), pollCount + 1);
-
-                        // Stack이 완료 상태면 종료
-                        String status = stackInfo.getStackStatus();
-                        if ("CREATE_COMPLETE".equals(status) ||
-                                "UPDATE_COMPLETE".equals(status) ||
-                                "CREATE_FAILED".equals(status) ||
-                                "ROLLBACK_COMPLETE".equals(status) ||
-                                "DELETE_COMPLETE".equals(status) ||
-                                status.endsWith("_FAILED")) {
-                            log.info("Stack reached terminal state: {}, closing SSE - caseId: {}, totalPolls: {}",
-                                    status, caseId, pollCount + 1);
-                            isComplete = true;
-                        }
-
-                        // Keep-alive heartbeat (30초마다, 프록시 타임아웃 방지)
-                        if (!isComplete && pollCount % 15 == 0 && pollCount > 0) {
-                            emitter.send(SseEmitter.event()
-                                    .name("heartbeat")
-                                    .data(Map.of("timestamp", System.currentTimeMillis())));
-                            log.debug("Heartbeat sent - caseId: {}, poll: {}", caseId, pollCount + 1);
-                        }
-
-                    } catch (IllegalStateException e) {
-                        // ✅ Stack이 생성되지 않은 경우
-                        log.debug("Stack not created yet - caseId: {}, accountId: {}, poll: {}, reason: {}",
-                                caseId, accountId, pollCount + 1, e.getMessage());
-
-                        Map<String, Object> notCreatedResponse = new HashMap<>();
-                        notCreatedResponse.put("caseId", caseId);
-                        notCreatedResponse.put("accountId", accountId);
-                        notCreatedResponse.put("stackName", String.format("CIRF-Case-%d-Account-%s", caseId, accountId));
-                        notCreatedResponse.put("stackStatus", "NOT_CREATED");
-                        notCreatedResponse.put("statusReason", "Stack이 아직 생성되지 않았습니다. CloudFormation Launch URL을 통해 배포를 시작하세요.");
-                        notCreatedResponse.put("createdAt", null);
-                        notCreatedResponse.put("updatedAt", null);
-                        notCreatedResponse.put("parameters", new HashMap<>());
-                        notCreatedResponse.put("outputs", new HashMap<>());
-
-                        emitter.send(SseEmitter.event()
-                                .name("stack-info")
-                                .data(notCreatedResponse));
-
-                    } catch (RuntimeException e) {
-                        // ✅ IRAutomationRole이 없거나 권한 문제
-                        log.debug("Cannot access stack - caseId: {}, accountId: {}, poll: {}, reason: {}",
-                                caseId, accountId, pollCount + 1, e.getMessage());
-
-                        Map<String, Object> inProgressResponse = new HashMap<>();
-                        inProgressResponse.put("caseId", caseId);
-                        inProgressResponse.put("accountId", accountId);
-                        inProgressResponse.put("stackName", String.format("CIRF-Case-%d-Account-%s", caseId, accountId));
-                        inProgressResponse.put("stackStatus", "CREATE_IN_PROGRESS");
-                        inProgressResponse.put("statusReason",
-                                String.format("Stack 생성 중입니다. IRAutomationRole 생성을 기다리는 중... (시도 %d회)",
-                                        pollCount + 1));
-                        inProgressResponse.put("createdAt", null);
-                        inProgressResponse.put("updatedAt", null);
-                        inProgressResponse.put("parameters", new HashMap<>());
-                        inProgressResponse.put("outputs", new HashMap<>());
-
-                        emitter.send(SseEmitter.event()
-                                .name("stack-info")
-                                .data(inProgressResponse));
-
-                        // Keep-alive (에러 시에도)
-                        if (pollCount % 15 == 0 && pollCount > 0) {
-                            emitter.send(SseEmitter.event()
-                                    .name("heartbeat")
-                                    .data(Map.of("timestamp", System.currentTimeMillis())));
-                        }
-                    }
-
-                    pollCount++;
-
-                    // 완료되지 않았으면 2초 대기
-                    if (!isComplete) {
-                        Thread.sleep(2000);
-                    }
-                }
-
-                emitter.complete();
-                log.info("SSE stream completed - caseId: {}, accountId: {}, totalPolls: {}",
-                        caseId, accountId, pollCount);
-
-            } catch (Exception e) {
-                log.error("Error during stack info streaming - caseId: {}, accountId: {}",
-                        caseId, accountId, e);
-                emitter.completeWithError(e);
-            } finally {
-                executor.shutdown();
-            }
-        });
-
-        return emitter;
-    }
-
-
-    public void validateUser(long userId) {
-        // userId 검증
         if (!userRepository.existsById(userId)) {
             throw new UserNotFoundException();
         }

@@ -1,7 +1,10 @@
 package com.cirf.dashboard.domain.cases.exception;
 
-public class NotFoundCaseException extends RuntimeException {
-  public NotFoundCaseException(String message) {
-    super(message);
-  }
+import com.cirf.dashboard.global.exception.BaseException;
+import org.springframework.http.HttpStatus;
+
+public class NotFoundCaseException extends BaseException {
+    public NotFoundCaseException(ErrorMessage e) {
+        super(HttpStatus.NOT_FOUND, e.getMessage());
+    }
 }

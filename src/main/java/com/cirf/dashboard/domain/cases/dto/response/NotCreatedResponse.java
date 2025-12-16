@@ -1,4 +1,13 @@
 package com.cirf.dashboard.domain.cases.dto.response;
 
-public class NotCreatedResponse {
+import lombok.Builder;
+
+@Builder
+public record NotCreatedResponse(
+        long caseId,
+        String accountId,
+        String stackName,
+        String stackStatus,
+        String statusReason
+) {
 }
