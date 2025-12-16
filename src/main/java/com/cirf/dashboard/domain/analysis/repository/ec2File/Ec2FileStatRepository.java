@@ -158,6 +158,42 @@ public class Ec2FileStatRepository {
         return count;
     }
 
+    /**
+     * 특정 EC2 인스턴스에 대한 파일 통계가 존재하는지 확인
+     */
+    public boolean existsByInstance(
+            String tenantId,
+            Long caseId,
+            String accountId,
+            String region,
+            String instanceId
+    ) {
+        DynamoDbTable<Ec2FileStat> table = dynamoDbEnhancedClient.table(
+                COLLECT_TABLE_NAME,
+                TableSchema.fromBean(Ec2FileStat.class)
+        );
+
+        String pk = String.format("STAT#TENANT#%s#CASE#%d", tenantId, caseId);
+        String skPrefix = String.format("ACCOUNT#%s#REG#%s#INSTANCE#%s#", accountId, region, instanceId);
+
+        QueryEnhancedRequest queryRequest = QueryEnhancedRequest.builder()
+                .queryConditional(QueryConditional.sortBeginsWith(Key.builder()
+                        .partitionValue(pk)
+                        .sortValue(skPrefix)
+                        .build()))
+                .limit(1)  // 하나만 있으면 됨
+                .build();
+
+        Page<Ec2FileStat> page = table.query(queryRequest)
+                .stream()
+                .findFirst()
+                .orElse(Page.create(List.of()));
+
+        boolean exists = !page.items().isEmpty();
+        log.debug("Check existence - instanceId: {}, exists: {}", instanceId, exists);
+        return exists;
+    }
+
     private Expression buildFilterExpression(String keyword) {
         // keyword만 필터링 (file 필드에 contains)
         if (keyword == null || keyword.isBlank()) {
