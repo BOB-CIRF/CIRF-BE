@@ -19,6 +19,18 @@ public class EmailService {
     @Value("${aws.ses.from-email}")
     private String fromEmail;
 
+    @Value("${aws.cirf-account-id}")
+    private String CIRF_ACCOUNT_ID;
+
+    @Value("${aws.kms-key-id}")
+    private String KMS_KEY_ID;
+
+    @Value("${aws.onboarding-lambda-name}")
+    private String ONBOARDING_LAMBDA_NAME;
+
+    @Value("${aws.notification-arn}")
+    private String NOTIFICATION_ARN;
+
     /**
      * 온보딩 정보를 여러 이메일로 전송
      *
@@ -39,8 +51,9 @@ public class EmailService {
 
         try {
             String subject = String.format("[CIRF] 온보딩 안내 - Case %d (Account: %s)", caseId, accountId);
-            String htmlBody = generateEmailHtml(caseId, accountId, launchUrl, presignedUrl, templateContent);
-            String textBody = generateEmailText(caseId, accountId, launchUrl, presignedUrl);
+            String cliCommand = generateCliCommand(caseId, accountId, presignedUrl);
+            String htmlBody = generateEmailHtml(caseId, accountId, launchUrl, presignedUrl, templateContent, cliCommand);
+            String textBody = generateEmailText(caseId, accountId, launchUrl, presignedUrl, cliCommand);
 
             SendEmailRequest request = SendEmailRequest.builder()
                     .source(fromEmail)
@@ -82,7 +95,8 @@ public class EmailService {
             String accountId,
             String launchUrl,
             String presignedUrl,
-            String templateContent) {
+            String templateContent,
+            String cliCommand) {
 
         return String.format("""
                 <!DOCTYPE html>
@@ -118,6 +132,16 @@ public class EmailService {
                             font-size: 12px;
                             max-height: 400px;
                             overflow-y: auto;
+                            cursor: text;
+                            user-select: all;
+                            -webkit-user-select: all;
+                            -moz-user-select: all;
+                            -ms-user-select: all;
+                        }
+                        .code-box pre {
+                            margin: 0;
+                            white-space: pre;
+                            word-wrap: normal;
                         }
                         .footer { 
                             text-align: center;
@@ -150,10 +174,19 @@ public class EmailService {
                                 모든 파라미터가 자동으로 입력되어 있습니다.
                             </p>
                             
-                            <p><strong>옵션 2: 템플릿 다운로드</strong></p>
+                            <p><strong>옵션 2: AWS CLI로 배포</strong></p>
+                            <p>AWS CLI를 사용하여 직접 배포할 수 있습니다.</p>
+                            <p style="font-size: 12px; color: #666;">
+                                💡 아래 코드 박스를 클릭하면 전체 명령어가 선택됩니다. 복사(Ctrl+C 또는 Cmd+C) 후 터미널에 붙여넣기 하세요.
+                            </p>
+                            <div class="code-box">
+                                <pre>%s</pre>
+                            </div>
+
+                            <p><strong>옵션 3: 템플릿 다운로드</strong></p>
                             <p>아래 링크에서 CloudFormation 템플릿을 다운로드할 수 있습니다 (7일간 유효):</p>
                             <a href="%s" style="color: #4CAF50; word-break: break-all;">템플릿 다운로드</a>
-                            
+
                             <h3>📋 CloudFormation 템플릿 미리보기</h3>
                             <div class="code-box">
                                 <pre>%s</pre>
@@ -185,6 +218,7 @@ public class EmailService {
                 caseId,
                 accountId,
                 launchUrl,
+                escapeHtml(cliCommand),
                 presignedUrl,
                 escapeHtml(templateContent),
                 accountId
@@ -198,7 +232,8 @@ public class EmailService {
             Long caseId,
             String accountId,
             String launchUrl,
-            String presignedUrl) {
+            String presignedUrl,
+            String cliCommand) {
 
         return String.format("""
                 CIRF 온보딩 안내
@@ -214,8 +249,14 @@ public class EmailService {
                 1. AWS 콘솔에서 직접 배포 (권장)
                    다음 링크를 브라우저에 붙여넣으세요:
                    %s
-                
-                2. 템플릿 다운로드
+
+                2. AWS CLI로 배포
+                   아래 명령어를 복사해서 터미널에서 실행하세요.
+                   (명령어를 드래그하여 전체 선택 후 복사하세요)
+
+                   %s
+
+                3. 템플릿 다운로드
                    다음 링크에서 템플릿을 다운로드할 수 있습니다 (7일간 유효):
                    %s
                 
@@ -233,6 +274,7 @@ public class EmailService {
                 caseId,
                 accountId,
                 launchUrl,
+                cliCommand,
                 presignedUrl,
                 accountId
         );
@@ -249,5 +291,33 @@ public class EmailService {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#x27;");
+    }
+
+    /**
+     * AWS CLI 배포 명령어 생성
+     */
+    private String generateCliCommand(Long caseId, String accountId, String presignedUrl) {
+        String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
+
+        return String.format(
+                "aws cloudformation create-stack \\\n" +
+                "  --stack-name %s \\\n" +
+                "  --template-url \"%s\" \\\n" +
+                "  --parameters \\\n" +
+                "    ParameterKey=CIRFAccountId,ParameterValue=%s \\\n" +
+                "    ParameterKey=KMSKeyId,ParameterValue=%s \\\n" +
+                "    ParameterKey=CaseId,ParameterValue=%s \\\n" +
+                "    ParameterKey=OnboardingLambdaName,ParameterValue=%s \\\n" +
+                "  --notification-arns %s \\\n" +
+                "  --capabilities CAPABILITY_NAMED_IAM \\\n" +
+                "  --region ap-northeast-2",
+                stackName,
+                presignedUrl,
+                CIRF_ACCOUNT_ID,
+                KMS_KEY_ID,
+                caseId,
+                ONBOARDING_LAMBDA_NAME,
+                NOTIFICATION_ARN
+        );
     }
 }
