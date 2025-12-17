@@ -157,6 +157,34 @@ public class CloudFormationTemplateService {
     }
 
     /**
+     * AWS CLI 배포 명령어 생성
+     */
+    public String generateCliCommand(Long caseId, String accountId, String presignedUrl) {
+        String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, accountId);
+
+        return String.format(
+                "aws cloudformation create-stack \\\n" +
+                "  --stack-name %s \\\n" +
+                "  --template-url \"%s\" \\\n" +
+                "  --parameters \\\n" +
+                "    ParameterKey=CIRFAccountId,ParameterValue=%s \\\n" +
+                "    ParameterKey=KMSKeyId,ParameterValue=%s \\\n" +
+                "    ParameterKey=CaseId,ParameterValue=%s \\\n" +
+                "    ParameterKey=OnboardingLambdaName,ParameterValue=%s \\\n" +
+                "  --notification-arns %s \\\n" +
+                "  --capabilities CAPABILITY_NAMED_IAM \\\n" +
+                "  --region ap-northeast-2",
+                stackName,
+                presignedUrl,
+                CIRF_ACCOUNT_ID,
+                KMS_KEY_ID,
+                caseId,
+                ONBOARDING_LAMBDA_NAME,
+                NOTIFICATION_ARN
+        );
+    }
+
+    /**
      * CloudFormation 템플릿 생성
      */
     private String generateCloudFormationTemplate(Long caseId, String accountId) {
