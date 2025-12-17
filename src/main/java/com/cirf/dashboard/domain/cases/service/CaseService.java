@@ -16,16 +16,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import java.util.ArrayList;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
-// 2. Import 추가
 import com.cirf.dashboard.domain.cases.entity.DeploymentStatus;
 import com.cirf.dashboard.domain.cases.repository.DeploymentStatusRepository;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.Map;
-import java.util.HashMap;
 
 import com.cirf.dashboard.domain.cases.repository.AccountIdRepository;
 import com.cirf.dashboard.domain.cases.repository.IncidentCaseRepository;

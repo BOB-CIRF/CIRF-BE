@@ -2,6 +2,7 @@ package com.cirf.dashboard.domain.cases.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -25,14 +26,20 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class CloudFormationTemplateService {
 
-    // 하드코딩 상수
-    private static final String CIRF_ACCOUNT_ID = "032552344607";
-    private static final String KMS_KEY_ID = "d79ea52e-54d8-4c58-8176-b16f6d928e98";
-    private static final String ONBOARDING_LAMBDA_NAME = "Onboarding_lambda";
+    @Value("${aws.account-id}")
+    private String CIRF_ACCOUNT_ID;
+
+    @Value("${aws.lambda.onboarding-function-name}")
+    private String ONBOARDING_LAMBDA_NAME;
+
+    @Value("${aws.kms-key-id}")
+    private String KMS_KEY_ID;
+
+    @Value("${aws.notification-arn}")
+    private String NOTIFICATION_ARN;
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
-
 
     /**
      * CloudFormation 템플릿을 생성하고 S3에 업로드
@@ -109,9 +116,17 @@ public class CloudFormationTemplateService {
      * @param customerAccountId 고객 계정 ID
      * @return CloudFormation 콘솔 런치 링크
      */
-    public String generateCloudFormationLaunchUrl(String presignedUrl, Long caseId, String customerAccountId) {
+    public String generateCloudFormationLaunchUrl(
+            String presignedUrl,
+            Long caseId,
+            String customerAccountId
+    ) {
         String encodedPresignedUrl = URLEncoder.encode(presignedUrl, StandardCharsets.UTF_8);
         String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, customerAccountId);
+
+        // 🔥 Notification ARN
+        String encodedNotificationArn =
+                URLEncoder.encode(NOTIFICATION_ARN, StandardCharsets.UTF_8);
 
         String launchUrl = String.format(
                 "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/create/review?" +
@@ -120,18 +135,21 @@ public class CloudFormationTemplateService {
                         "param_CIRFAccountId=%s&" +
                         "param_KMSKeyId=%s&" +
                         "param_CaseId=%s&" +
-                        "param_OnboardingLambdaName=%s",
+                        "param_OnboardingLambdaName=%s&" +
+                        "notificationARNs=%s",
                 encodedPresignedUrl,
                 stackName,
-                CIRF_ACCOUNT_ID,           // ✅ 수정
-                KMS_KEY_ID,                // ✅ 수정
+                CIRF_ACCOUNT_ID,
+                KMS_KEY_ID,
                 caseId,
-                ONBOARDING_LAMBDA_NAME     // ✅ 수정
+                ONBOARDING_LAMBDA_NAME,
+                encodedNotificationArn
         );
 
         log.info("Generated CloudFormation launch URL for case {} and account {}", caseId, customerAccountId);
         return launchUrl;
     }
+
 
     // ✅ 여기에 추가
     /**
