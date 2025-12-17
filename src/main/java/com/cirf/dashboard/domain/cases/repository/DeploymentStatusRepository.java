@@ -9,5 +9,8 @@ public interface DeploymentStatusRepository extends JpaRepository<DeploymentStat
 
     Optional<DeploymentStatus> findByCaseIdAndAccountId(Long caseId, String accountId);
 
+    // 가장 최근 생성된 DeploymentStatus 조회
+    Optional<DeploymentStatus> findFirstByCaseIdAndAccountIdOrderByCreatedAtDesc(Long caseId, String accountId);
+
     boolean existsByCaseIdAndAccountId(Long caseId, String accountId);
 }

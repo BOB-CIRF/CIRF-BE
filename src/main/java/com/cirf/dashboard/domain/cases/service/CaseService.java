@@ -522,9 +522,9 @@ public class CaseService {
             throw new IllegalArgumentException("해당 사례에 등록되지 않은 계정입니다: " + accountId);
         }
 
-        // 3. 배포 상태 조회
+        // 3. 배포 상태 조회 (가장 최근 레코드)
         DeploymentStatus deploymentStatus = deploymentStatusRepository
-                .findByCaseIdAndAccountId(caseId, accountId)
+                .findFirstByCaseIdAndAccountIdOrderByCreatedAtDesc(caseId, accountId)
                 .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
 
         return DeploymentStatusResponse.from(deploymentStatus);
@@ -539,8 +539,9 @@ public class CaseService {
         log.info("Updating deployment status - caseId: {}, accountId: {}, status: {}",
                 caseId, accountId, status);
 
+        // 가장 최근 생성된 DeploymentStatus 조회
         DeploymentStatus deploymentStatus = deploymentStatusRepository
-                .findByCaseIdAndAccountId(caseId, accountId)
+                .findFirstByCaseIdAndAccountIdOrderByCreatedAtDesc(caseId, accountId)
                 .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
 
         deploymentStatus.updateStatus(status, statusReason);
@@ -598,7 +599,7 @@ public class CaseService {
     @Transactional(readOnly = true)
     public DeploymentStatusResponse getDeploymentStatusOrDefault(Long caseId, String accountId) {
         return deploymentStatusRepository
-                .findByCaseIdAndAccountId(caseId, accountId)
+                .findFirstByCaseIdAndAccountIdOrderByCreatedAtDesc(caseId, accountId)
                 .map(DeploymentStatusResponse::from)
                 .orElseThrow();
     }
@@ -611,8 +612,9 @@ public class CaseService {
         log.info("Updating deployment status - caseId: {}, accountId: {}, status: {}",
                 caseId, accountId, status);
 
+        // 가장 최근 생성된 DeploymentStatus 조회
         DeploymentStatus deploymentStatus = deploymentStatusRepository
-                .findByCaseIdAndAccountId(caseId, accountId)
+                .findFirstByCaseIdAndAccountIdOrderByCreatedAtDesc(caseId, accountId)
                 .orElseThrow(() -> new IllegalStateException("배포 상태 정보가 없습니다."));
 
         deploymentStatus.updateStatus(stackStatus, statusReason);
