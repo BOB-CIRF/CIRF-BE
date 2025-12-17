@@ -124,10 +124,7 @@ public class CloudFormationTemplateService {
         String encodedPresignedUrl = URLEncoder.encode(presignedUrl, StandardCharsets.UTF_8);
         String stackName = String.format("CIRF-Case-%d-Account-%s", caseId, customerAccountId);
 
-        // 🔥 Notification ARN
-        String encodedNotificationArn =
-                URLEncoder.encode(NOTIFICATION_ARN, StandardCharsets.UTF_8);
-
+        // 🔥 Notification ARN - fragment 파라미터는 인코딩하지 않음
         String launchUrl = String.format(
                 "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/create/review?" +
                         "templateURL=%s&" +
@@ -136,14 +133,14 @@ public class CloudFormationTemplateService {
                         "param_KMSKeyId=%s&" +
                         "param_CaseId=%s&" +
                         "param_OnboardingLambdaName=%s&" +
-                        "notificationARNs[0]=%s",
+                        "notificationArns=%s",
                 encodedPresignedUrl,
                 stackName,
                 CIRF_ACCOUNT_ID,
                 KMS_KEY_ID,
                 caseId,
                 ONBOARDING_LAMBDA_NAME,
-                encodedNotificationArn
+                NOTIFICATION_ARN
         );
 
         log.info("Generated CloudFormation launch URL for case {} and account {}", caseId, customerAccountId);
