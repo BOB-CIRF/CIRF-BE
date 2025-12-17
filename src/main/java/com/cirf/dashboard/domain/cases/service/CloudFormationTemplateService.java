@@ -136,7 +136,7 @@ public class CloudFormationTemplateService {
                         "param_KMSKeyId=%s&" +
                         "param_CaseId=%s&" +
                         "param_OnboardingLambdaName=%s&" +
-                        "notificationARNs=%s",
+                        "notificationARNs[0]=%s",
                 encodedPresignedUrl,
                 stackName,
                 CIRF_ACCOUNT_ID,
